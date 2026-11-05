@@ -3,8 +3,8 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities'
 import { useStore } from '../store'
 import { useGoogle } from '../hooks'
-import type { LegMode } from '../types'
-import type { DayPlan, LegPlan, StopPlan } from '../lib/schedule'
+import type { LegMode, MealMark } from '../types'
+import { MEAL_LABEL, type DayPlan, type LegPlan, type StopPlan } from '../lib/schedule'
 import { hoursForDay } from '../lib/hours'
 import { MODE_ICON, MODE_LABEL } from '../lib/routing'
 import { dayPoints, dayRouteUrls, directionsUrl } from '../lib/export'
@@ -41,7 +41,7 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
   const [proposal, setProposal] = useState<OptimizeResult>()
   const [insertAt, setInsertAt] = useState<number | null>(null)
   const [findLodging, setFindLodging] = useState(false)
-  const routeUrls = dayRouteUrls(dayPoints(plan))
+  const routeUrls = plan.driveMin > 0 ? dayRouteUrls(dayPoints(plan)) : []
   const prevLodging = plan.index > 0 ? trip.days[plan.index - 1].lodgingPlaceId : undefined
   const isLastDay = plan.index === plans.length - 1
   const insertBox = (index: number) => (
@@ -98,7 +98,12 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-medium text-stone-500">{fmtDate(plan.date, true)}</div>
-            <InlineText className="text-xl font-bold" value={day.title ?? ''} placeholder="이 날의 제목" onChange={(v) => updateDay(day.id, { title: v })} />
+            <InlineText wrap className="text-xl font-bold leading-snug" value={plan.title} onChange={(v) => updateDay(day.id, { title: v.trim() && v.trim() !== plan.autoTitle ? v.trim() : undefined })} />
+            {day.title?.trim() && (
+              <button className="ml-2 align-middle text-xs font-medium text-violet-700 hover:underline" title={`일정에 맞춘 제목: ${plan.autoTitle}`} onClick={() => updateDay(day.id, { title: undefined })}>
+                ↺ 일정에 맞추기
+              </button>
+            )}
           </div>
           <Menu label="⋯">
             {(close) => (
@@ -120,9 +125,13 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
           </Menu>
         </div>
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-stone-600">
-          <span>
-            🚗 운전 <b className="text-stone-900">{fmtDur(plan.driveMin)}</b> · {fmtKm(plan.driveMeters)}
-          </span>
+          {plan.driveMin > 0 ? (
+            <span>
+              🚗 운전 <b className="text-stone-900">{fmtDur(plan.driveMin)}</b> · {fmtKm(plan.driveMeters)}
+            </span>
+          ) : (
+            plan.stops.length > 0 && <b className="text-stone-900">🚶 차 없는 날</b>
+          )}
           <span>
             ⏱ {fmtHM(plan.start)} → <b className="text-stone-900">{fmtHM(plan.end)}</b>
           </span>
@@ -132,6 +141,25 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
             </span>
           )}
           {plan.pendingLegs > 0 && <span className="text-violet-600">경로 계산 중 {plan.pendingLegs}구간…</span>}
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-stone-600">
+          {(['lunch', 'dinner'] as const).map((m) => {
+            const sp = plan[m]
+            if (!sp && m === 'lunch' && plan.start > 13 * 60) return null
+            if (!sp && m === 'dinner' && isLastDay) return null
+            return (
+              <span key={m}>
+                {MEAL_LABEL[m]}{' '}
+                {sp ? (
+                  <button className="font-semibold text-stone-900 hover:text-violet-700" onClick={() => openPlace(sp.place.id)}>
+                    {sp.place.name}
+                  </button>
+                ) : (
+                  <span className="font-semibold text-amber-700">미정</span>
+                )}
+              </span>
+            )
+          })}
         </div>
         <div className="mt-2.5">
           <MiniDayBar p={plan} />
@@ -266,7 +294,7 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
         </div>
 
         <textarea
-          className="mt-4 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm placeholder:text-stone-400"
+          className="mt-4 field-sizing-content w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm placeholder:text-stone-400"
           rows={2}
           placeholder="이 날 메모 (예약번호, 준비물 등)"
           value={day.note ?? ''}
@@ -334,7 +362,7 @@ function LegRow({ leg, onMode, onManual, manual, onInsert }: { leg: LegPlan; onM
         ? { t: '구글', c: 'bg-emerald-50 text-emerald-700' }
         : r.provider === 'osrm' || r.provider === 'valhalla'
           ? { t: '무료 추정', c: 'bg-stone-100 text-stone-600' }
-          : { t: leg.mode === 'MANUAL' ? '직접' : '추정', c: 'bg-stone-100 text-stone-600' }
+          : { t: leg.mode === 'MANUAL' || leg.mode === 'TRANSIT' ? '직접' : '추정', c: 'bg-stone-100 text-stone-600' }
       : r.status === 'pending'
         ? { t: '계산 중', c: 'bg-violet-50 text-violet-600' }
         : { t: '추정', c: 'bg-amber-50 text-amber-700' }
@@ -351,7 +379,7 @@ function LegRow({ leg, onMode, onManual, manual, onInsert }: { leg: LegPlan; onM
             ))
           }
         </Menu>
-        {leg.mode === 'MANUAL' || r.status === 'needsManual' ? (
+        {leg.mode === 'MANUAL' || leg.mode === 'TRANSIT' ? (
           <label className="flex items-center gap-1">
             <input
               type="number"
@@ -438,6 +466,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
           <div className="min-w-0 flex-1">
             <div className="flex items-start gap-1">
               <button className="min-w-0 flex-1 text-left" onClick={() => openPlace(place.id)}>
+                {sp.meal && <div className="text-xs font-bold text-violet-700">{MEAL_LABEL[sp.meal]}</div>}
                 <div className="truncate text-[15px] font-semibold hover:text-violet-700">
                   {KIND_ICON[place.kind]} {place.name}
                 </div>
@@ -492,9 +521,10 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
             {place.season && <div className="mt-1.5 rounded-md bg-violet-50 px-2 py-1 text-[12px] leading-snug text-violet-900">🌸 {place.season}</div>}
             <WarningList warnings={sp.warnings} />
             {(showNote || stop.note) && (
-              <input
-                className="mt-1.5 w-full rounded-md border border-stone-200 px-2 py-1 text-[12.5px] placeholder:text-stone-400"
+              <textarea
+                className="mt-1.5 field-sizing-content w-full resize-none rounded-md border border-stone-200 px-2 py-1 text-[12.5px] leading-snug placeholder:text-stone-400"
                 placeholder="메모 (예약 시간, 주문할 메뉴 등)"
+                rows={Math.max(1, Math.ceil((stop.note?.length ?? 0) / 24))}
                 value={stop.note ?? ''}
                 autoFocus={showNote && !stop.note}
                 onChange={(e) => updateStop(day.id, stop.id, { note: e.target.value || undefined })}
@@ -506,6 +536,19 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
                   메모
                 </button>
               )}
+              <Menu label={<span className="text-xs text-stone-500">{sp.meal ? MEAL_LABEL[sp.meal] : '🍴 식사 표시'}</span>}>
+                {(close) =>
+                  ([
+                    ['lunch', MEAL_LABEL.lunch],
+                    ['dinner', MEAL_LABEL.dinner],
+                    ['none', '식사 아님'],
+                  ] as [MealMark, string][]).map(([m, label]) => (
+                    <MenuItem key={m} onClick={() => (updateStop(day.id, stop.id, { meal: m }), close())}>
+                      {label}
+                    </MenuItem>
+                  ))
+                }
+              </Menu>
               <Menu label={<span className="text-xs font-semibold text-violet-700">📅 다른 날로</span>}>
                 {(close) =>
                   plans
@@ -522,7 +565,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
                         <span className="font-semibold" style={{ color: dayColor(p.index) }}>
                           D{p.index + 1}
                         </span>{' '}
-                        {fmtDate(p.date)} <span className="text-stone-500">{p.day.title}</span>
+                        {fmtDate(p.date)} <span className="text-stone-500">{p.title}</span>
                       </MenuItem>
                     ))
                 }

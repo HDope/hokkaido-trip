@@ -85,11 +85,13 @@ export function InlineText({
   onChange,
   placeholder,
   className,
+  wrap,
 }: {
   value: string
   onChange: (v: string) => void
   placeholder?: string
   className?: string
+  wrap?: boolean // 길면 줄바꿈 (기본은 말줄임)
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
@@ -101,7 +103,7 @@ export function InlineText({
   if (!editing)
     return (
       <button
-        className={cx('max-w-full truncate rounded-md px-1 -mx-1 text-left hover:bg-stone-100', !value && 'text-stone-400', className)}
+        className={cx('max-w-full rounded-md px-1 -mx-1 text-left hover:bg-stone-100', !wrap && 'truncate', !value && 'text-stone-400', className)}
         onClick={() => setEditing(true)}
         title="클릭해서 수정"
       >

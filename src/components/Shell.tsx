@@ -141,11 +141,11 @@ function DayNavItem({ p, active, onClick }: { p: DayPlan; active: boolean; onCli
           </span>
         )}
       </div>
-      <div className="mt-1 truncate text-[13px] font-semibold">{p.day.title || '제목 없음'}</div>
+      <div className="mt-1 truncate text-[13px] font-semibold">{p.title}</div>
       <div className="mt-1.5">
         <MiniDayBar p={p} />
       </div>
-      <div className="mt-1 text-[11px] text-stone-500">🚗 {fmtDur(p.driveMin)}</div>
+      <div className="mt-1 text-[11px] text-stone-500">{p.driveMin > 0 ? `🚗 ${fmtDur(p.driveMin)}` : '🚶 차 없는 날'}</div>
     </button>
   )
 }

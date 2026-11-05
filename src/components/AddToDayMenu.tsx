@@ -25,7 +25,7 @@ export function AddToDayMenu({ getPlaceId, name, label = '＋ 날짜에 추가' 
             <span className="font-semibold" style={{ color: dayColor(p.index) }}>
               D{p.index + 1}
             </span>{' '}
-            {fmtDate(p.date)} <span className="text-stone-500">{p.day.title}</span>
+            {fmtDate(p.date)} <span className="text-stone-500">{p.title}</span>
           </MenuItem>
         ))
       }

@@ -1,7 +1,7 @@
 import type { LegMode, Place, Trip } from '../types'
 import { decodePolyline } from './geo'
 import { hoursForDay } from './hours'
-import type { DayPlan, Warning } from './schedule'
+import { MEAL_LABEL, type DayPlan, type Warning } from './schedule'
 import { fmtDate, fmtDur, fmtHM, fmtKm } from './time'
 import { DAY_COLORS, KIND_ICON } from '../ui'
 
@@ -113,7 +113,7 @@ export function buildKml(trip: Trip, plans: DayPlan[], only?: number): string {
       const path = line.length
         ? `<Placemark><name>${esc(`D${p.index + 1} 경로`)}</name><styleUrl>${style}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${line.map(([la, ln]) => `${ln},${la},0`).join(' ')}</coordinates></LineString></Placemark>`
         : ''
-      return `<Folder><name>${esc(`D${p.index + 1} ${fmtDate(p.date)} ${p.day.title ?? ''}`)}</name>${marks}${lodging}${path}</Folder>`
+      return `<Folder><name>${esc(`D${p.index + 1} ${fmtDate(p.date)} ${p.title}`)}</name>${marks}${lodging}${path}</Folder>`
     })
     .join('')
   return `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${esc(trip.title)}</name>${styles}${folders}</Document></kml>`
@@ -128,7 +128,7 @@ export function buildMobileHtml(trip: Trip, plans: DayPlan[]): string {
   const days = plans
     .map((p) => {
       const color = DAY_COLORS[p.index % DAY_COLORS.length]
-      const routes = dayRouteUrls(dayPoints(p))
+      const routes = (p.driveMin > 0 ? dayRouteUrls(dayPoints(p)) : [])
         .map((r) => `<a class="btn primary" href="${esc(r.url)}">🗺️ 구글맵 하루 경로 ${r.label === '전체' ? '' : r.label}</a>`)
         .join('')
       const leg = (l: DayPlan['endLeg']) =>
@@ -142,7 +142,7 @@ export function buildMobileHtml(trip: Trip, plans: DayPlan[]): string {
           const ws = s.warnings.filter((w) => w.level !== 'info')
           return `${leg(s.leg)}<div class="stop">
 <div class="time">${fmtHM(s.arrive)}<small>${s.stop.stay ? fmtHM(s.depart) : ''}</small></div>
-<div class="body"><div class="name"><span class="num" style="background:${color}">${i + 1}</span>${KIND_ICON[pl.kind]} ${esc(pl.name)}</div>
+<div class="body"><div class="name"><span class="num" style="background:${color}">${i + 1}</span>${s.meal ? `<span class="meal">${MEAL_LABEL[s.meal]}</span> ` : ''}${KIND_ICON[pl.kind]} ${esc(pl.name)}</div>
 ${pl.nameLocal ? `<div class="local">${esc(pl.nameLocal)}</div>` : ''}
 ${pl.hours || pl.alwaysOpen || (pl.kind !== 'hotel' && pl.kind !== 'airport') ? `<div class="meta">🕘 ${esc(hoursForDay(pl, p.weekday))}${s.wait ? ` · 대기 ${fmtDur(s.wait)}` : ''}</div>` : ''}
 ${pl.phone ? `<div class="meta">☎ <a href="tel:${esc(pl.phone)}">${esc(pl.phone)}</a> <span class="hint">렌터카 내비에 전화번호 입력</span></div>` : ''}
@@ -159,8 +159,8 @@ ${ws.map((w) => `<div class="warn">${LEVEL_ICON[w.level]} ${esc(w.text)}</div>`)
         ? `${leg(p.endLeg)}<div class="stop lodge"><div class="time">${fmtHM(p.end)}</div><div class="body"><div class="name">🛏️ ${esc(p.lodging.name)}</div>${p.lodging.nameLocal ? `<div class="local">${esc(p.lodging.nameLocal)}</div>` : ''}${p.lodging.phone ? `<div class="meta">☎ <a href="tel:${esc(p.lodging.phone)}">${esc(p.lodging.phone)}</a></div>` : ''}<div class="links"><a href="${esc(directionsUrl(p.lodging))}">길찾기</a><a href="${esc(placeUrl(p.lodging))}">구글맵</a></div></div></div>`
         : ''
       const dayWarn = p.warnings.filter((w) => w.level !== 'info').map((w) => `<div class="warn">${LEVEL_ICON[w.level]} ${esc(w.text)}</div>`).join('')
-      return `<section id="d${p.index + 1}"><header style="border-color:${color}"><div class="dnum" style="background:${color}">D${p.index + 1}</div><div><h2>${fmtDate(p.date)} ${esc(p.day.title ?? '')}</h2>
-<div class="sum">출발 ${fmtHM(p.start)} · 운전 ${fmtDur(p.driveMin)} (${fmtKm(p.driveMeters)}) · 도착 ${fmtHM(p.end)}${p.sun ? ` · 🌅 ${fmtHM(p.sun.sunrise)} 🌇 ${fmtHM(p.sun.sunset)}` : ''}</div></div></header>
+      return `<section id="d${p.index + 1}"><header style="border-color:${color}"><div class="dnum" style="background:${color}">D${p.index + 1}</div><div><h2>${fmtDate(p.date)} ${esc(p.title)}</h2>
+<div class="sum">출발 ${fmtHM(p.start)} · ${p.driveMin > 0 ? `운전 ${fmtDur(p.driveMin)} (${fmtKm(p.driveMeters)})` : '차 없는 날'} · 도착 ${fmtHM(p.end)}${p.sun ? ` · 🌅 ${fmtHM(p.sun.sunrise)} 🌇 ${fmtHM(p.sun.sunset)}` : ''}</div>${p.lunch || p.dinner ? `<div class="sum">${[p.lunch && `🍱 ${esc(p.lunch.place.name)}`, p.dinner && `🍽️ ${esc(p.dinner.place.name)}`].filter(Boolean).join(' · ')}</div>` : ''}</div></header>
 ${p.startPlace ? `<div class="start">출발: ${esc(p.startPlace.name)}</div>` : ''}${dayWarn}<div class="routes">${routes}</div>${stops}${lodging}
 ${p.day.note ? `<div class="note">📝 ${esc(p.day.note)}</div>` : ''}</section>`
     })
@@ -182,7 +182,7 @@ header{display:flex;gap:10px;align-items:center;padding:14px;border-left:5px sol
 .start{padding:2px 14px;color:var(--muted);font-size:13px}
 .stop{display:flex;gap:10px;padding:10px 14px;border-top:1px solid var(--line)}.stop .time{width:52px;flex:none;font-weight:700;font-variant-numeric:tabular-nums}.stop .time small{display:block;color:var(--muted);font-weight:400}
 .body{flex:1;min-width:0}.name{font-weight:650}.num{display:inline-block;min-width:20px;height:20px;border-radius:10px;color:#fff;font-size:12px;text-align:center;line-height:20px;margin-right:6px}
-.local{color:var(--muted);font-size:13px}.meta{font-size:13px;margin-top:2px}.hint{color:var(--muted);font-size:11.5px}
+.meal{font-size:12px;font-weight:700;color:var(--accent)}.local{color:var(--muted);font-size:13px}.meta{font-size:13px;margin-top:2px}.hint{color:var(--muted);font-size:11.5px}
 .note{font-size:13px;color:var(--muted);margin-top:4px;padding:0 14px}.body .note{padding:0}
 .warn{font-size:13px;background:var(--warnbg);border-radius:8px;padding:4px 8px;margin:4px 14px}.body .warn{margin:4px 0}
 .links{display:flex;gap:8px;margin-top:6px}.links a{font-size:13px;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:3px 8px}

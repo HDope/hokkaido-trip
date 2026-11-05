@@ -1,4 +1,4 @@
-import type { Day, LegMode, Place, RouteLeg, Stop, Trip } from '../types'
+import type { Day, LegMode, Place, PlaceKind, RouteLeg, Stop, Trip } from '../types'
 import { checkHours, type HoursCheck } from './hours'
 import { resolveLeg, type ResolvedLeg } from './routing'
 import { sunTimes } from './sun'
@@ -37,10 +37,17 @@ export type StopPlan = {
   wait: number
   hours: HoursCheck
   warnings: Warning[]
+  meal?: Meal
 }
+
+export type Meal = 'lunch' | 'dinner'
 
 export type DayPlan = {
   day: Day
+  title: string // 직접 쓴 제목, 없으면 일정에서 만든 제목
+  autoTitle: string
+  lunch?: StopPlan
+  dinner?: StopPlan
   index: number
   date: Date
   weekday: number
@@ -67,6 +74,44 @@ export function startPlaceIdFor(trip: Trip, index: number): string | undefined {
 }
 
 const LEVEL_ORDER: Level[] = ['critical', 'serious', 'warning', 'info']
+
+/** 점심·저녁 판단: 직접 표시한 값 우선, 없으면 식당의 도착 시각으로 */
+export function mealOf(stop: Stop, place: Place | undefined, arrive: number): Meal | undefined {
+  if (stop.meal === 'none') return undefined
+  if (stop.meal) return stop.meal
+  if (place?.kind !== 'food') return undefined
+  if (arrive >= 10 * 60 + 30 && arrive < 15 * 60 + 30) return 'lunch'
+  if (arrive >= 16 * 60 + 30 && arrive < 24 * 60) return 'dinner'
+  return undefined
+}
+
+export const MEAL_LABEL: Record<Meal, string> = { lunch: '🍱 점심', dinner: '🍽️ 저녁' }
+
+const shortName = (name: string) => name.replace(/\s*[(（].*?[)）]\s*/g, ' ').trim() || name
+
+const NOT_IN_TITLE: PlaceKind[] = ['hotel', 'airport', 'food', 'cafe']
+
+/** 일정에서 그날 제목을 만든다. 장소를 넣고 빼면 제목도 따라 바뀐다 */
+export function autoDayTitle(stops: StopPlan[], startPlace?: Place, lodging?: Place): string {
+  const places = stops.map((s) => s.place).filter((p): p is Place => !!p)
+  const names = [...new Set(places.filter((p) => !NOT_IN_TITLE.includes(p.kind)).sort((a, b) => Number(a.kind === 'shop') - Number(b.kind === 'shop')).map((p) => shortName(p.name)))]
+  // 사이드바에 들어가도록 짧게: 최대 3곳, 글자가 길면 그보다 적게
+  const shown = names.slice(0, 1)
+  for (const name of names.slice(1, 3)) {
+    if ([...shown, name].join(' · ').length > 30) break
+    shown.push(name)
+  }
+  const arrive = startPlace?.kind === 'airport'
+  const leave = places.some((p) => p.kind === 'airport')
+  const parts = [...(arrive ? ['도착'] : []), ...shown, ...(leave ? ['출국'] : [])]
+  if (!shown.length && arrive && lodging) parts.push(shortName(lodging.name))
+  if (!parts.length) {
+    const food = places.filter((p) => p.kind === 'food' || p.kind === 'cafe').map((p) => shortName(p.name))
+    if (food.length) return food.slice(0, 2).join(' · ')
+    return lodging ? `${shortName(lodging.name)}에서 쉬는 날` : '자유 일정'
+  }
+  return parts.join(' · ') + (names.length > shown.length ? ` 외 ${names.length - shown.length}곳` : '')
+}
 
 export function worstLevel(ws: Warning[]): Level | undefined {
   return LEVEL_ORDER.find((l) => ws.some((w) => w.level === l))
@@ -104,7 +149,7 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
     const warnings: Warning[] = []
     if (!confirmed) pendingLegs++
     if (resolved.status === 'needsManual') {
-      warnings.push({ level: 'warning', text: '대중교통 시간은 구글 키가 있어야 계산돼요 — 직접 입력하세요' })
+      warnings.push({ level: 'warning', text: '구글이 일본 대중교통 경로를 주지 않아요 — 구글맵에서 확인해 시간을 직접 넣어주세요' })
     } else if (resolved.status === 'error') {
       warnings.push({ level: 'warning', text: `경로 계산 실패: ${resolved.message} (직선거리로 추정 중)` })
     }
@@ -152,7 +197,7 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
     stayMin += stop.stay
     t = depart
     prev = place ?? prev
-    return { stop, place, leg, arrive, depart, wait, hours, warnings }
+    return { stop, place, leg, arrive, depart, wait, hours, warnings, meal: mealOf(stop, place, arrive) }
   })
 
   let endLeg: LegPlan | undefined
@@ -180,8 +225,14 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
   const counts = { critical: 0, serious: 0, warning: 0, info: 0 }
   for (const w of all) counts[w.level]++
 
+  const autoTitle = autoDayTitle(stops, startPlace, lodging)
+
   return {
     day,
+    title: day.title?.trim() || autoTitle,
+    autoTitle,
+    lunch: stops.find((x) => x.meal === 'lunch'),
+    dinner: stops.find((x) => x.meal === 'dinner'),
     index,
     date,
     weekday,

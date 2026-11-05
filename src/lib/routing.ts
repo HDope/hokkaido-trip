@@ -33,14 +33,15 @@ export function resolveLeg(
   const straight = haversineMeters(from, to)
   if (mode === 'MANUAL') return { status: 'ok', minutes: manualMinutes ?? 0, meters: straight, provider: 'estimate' }
   if (straight < 30) return { status: 'ok', minutes: 0, meters: 0, provider: 'estimate' }
-  const key = legKey(from, to, mode, settings.avoidTolls)
-  const leg = cache[key]
-  const estimate = roughMinutes(from, to, mode)
-  if (mode === 'TRANSIT' && !hasGoogle && !leg) {
+  // 구글 경로 API는 일본 대중교통을 주지 않아서 시간을 직접 넣는다
+  if (mode === 'TRANSIT') {
     return manualMinutes != null
       ? { status: 'ok', minutes: manualMinutes, meters: straight, provider: 'estimate' }
       : { status: 'needsManual', meters: straight }
   }
+  const key = legKey(from, to, mode, settings.avoidTolls)
+  const leg = cache[key]
+  const estimate = roughMinutes(from, to, mode)
   if (!leg) return { status: 'pending', key, estimate, meters: straight }
   if (leg.error) return { status: 'error', key, message: leg.error, estimate, meters: straight }
   const factor = leg.provider === 'osrm' || leg.provider === 'valhalla' ? settings.freeModeFactor : 1

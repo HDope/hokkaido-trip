@@ -52,7 +52,10 @@ export type Stop = {
   legMode?: LegMode // 이 장소로 오는 구간의 이동수단
   manualMinutes?: number
   note?: string
+  meal?: MealMark // 비우면 식당을 도착 시각으로 판단
 }
+
+export type MealMark = 'lunch' | 'dinner' | 'none'
 
 export type Day = {
   id: string

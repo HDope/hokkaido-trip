@@ -57,14 +57,16 @@ export function Overview({ plans }: { plans: DayPlan[] }) {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold">
-                    {fmtDate(p.date)} {p.day.title}
+                    {fmtDate(p.date)} {p.title}
                   </span>
                   <span className="block truncate text-xs text-stone-500">{route.join(' → ') || '아직 비어 있어요'}</span>
                   <span className="mt-1 flex flex-wrap gap-x-3 text-xs text-stone-600">
-                    <span>🚗 {fmtDur(p.driveMin)}</span>
+                    <span>{p.driveMin > 0 ? `🚗 ${fmtDur(p.driveMin)}` : '🚶 차 없는 날'}</span>
                     <span>
                       ⏱ {fmtHM(p.start)}–{fmtHM(p.end)}
                     </span>
+                    {p.lunch && <span>🍱 {p.lunch.place.name}</span>}
+                    {p.dinner && <span>🍽️ {p.dinner.place.name}</span>}
                     {issues.map((l) => (
                       <span key={l}>
                         {LEVEL_META[l].icon} {LEVEL_META[l].label} {p.counts[l]}

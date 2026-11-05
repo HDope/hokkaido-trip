@@ -150,6 +150,8 @@ export const CANDIDATES: Candidate[] = [
   // 데님·시계
   { id: 'c-tanuki', theme: 'shop', region: 'sapporo', name: '다누키코지 구제 거리', nameLocal: '狸小路商店街', location: { lat: 43.0568, lng: 141.35 }, kind: 'shop', status: 'web', stay: 90, blurb: '상점가와 주변에 수입 구제 가게가 20곳 이상 모여 있다는 자료가 있어요(1·2·7초메 중심). 풀카운트를 찾는다면 여기부터. 재고는 현장 확인.' },
   { id: 'c-yodobashi', theme: 'shop', region: 'sapporo', name: '요도바시 카메라 멀티미디어 삿포로', nameLocal: 'ヨドバシカメラ マルチメディア札幌', location: { lat: 43.06829, lng: 141.34767 }, kind: 'shop', status: 'web', stay: 60, hours: web('연중무휴로 게재, 입점 매장 기준 시간', '10:00', '22:00'), blurb: '삿포로역 북쪽 대형 가전점. 양판점이라 비교하며 보기 좋은 후보지만 시계 코너 규모·포인트율은 확인 못함.' },
+  { id: 'c-biccamera', theme: 'shop', region: 'sapporo', name: '빅카메라 삿포로점', nameLocal: 'ビックカメラ 札幌店', location: { lat: 43.06654, lng: 141.35279 }, kind: 'shop', status: 'web', stay: 45, phone: '011-261-1111', blurb: '삿포로 도큐백화점 5·6층, 삿포로역과 지하로 연결. 10~20시. 관광 안내에 시계가 주요 품목으로 나오지 않아 구색은 현장 확인이 필요해요.' },
+  { id: 'c-komehyo', theme: 'shop', region: 'sapporo', name: 'KOMEHYO 삿포로 도큐백화점', nameLocal: 'KOMEHYO さっぽろ東急百貨店', location: { lat: 43.06617, lng: 141.35286 }, kind: 'shop', status: 'web', stay: 30, blurb: '빅카메라와 같은 건물의 중고 브랜드 전문점. 정가보다 싸게 살 가능성이 있는 곳이지만 면세 여부와 시계 재고는 확인 못함.' },
   { id: 'c-bic', theme: 'shop', region: 'sapporo', name: '빅카메라 Select 삿포로 다누키코지점', nameLocal: 'ビックカメラ Select 札幌狸小路店', location: { lat: 43.05722, lng: 141.35043 }, kind: 'shop', status: 'web', stay: 30, blurb: '2026년 1월 개장한 소형 셀렉트 매장, 23시까지 영업. 관광객용 상품 위주라 시계 구색은 기대를 낮추는 게 좋아요.' },
   { id: 'c-daimaru', theme: 'shop', region: 'sapporo', name: '다이마루 삿포로점', nameLocal: '大丸札幌店', location: { lat: 43.0677, lng: 141.3497 }, kind: 'shop', status: 'web', stay: 45, blurb: '삿포로역 옆 백화점, 5층 시계 매장(해밀턴 공식 취급 확인). 고급 시계를 볼 때 후보, 할인은 기대하기 어려워요.' },
 
@@ -163,7 +165,6 @@ export const CANDIDATES: Candidate[] = [
 
   // 시계
   { id: 'c-tictac', theme: 'shop', region: 'sapporo', name: 'TiCTAC 삿포로 스텔라플레이스점', nameLocal: 'TiCTAC 札幌ステラプレイス店', location: { lat: 43.06805, lng: 141.35099 }, kind: 'shop', status: 'web', stay: 45, blurb: 'JR타워 스텔라플레이스 5층 시계 전문점. 세이코·시티즌·지샥을 다루고 영어 응대 가능. 면세 여부는 확인 못함.' },
-  { id: 'c-outlet', theme: 'shop', region: 'airport', name: '지샥 아웃렛 (미쓰이 아웃렛 삿포로 기타히로시마)', nameLocal: '三井アウトレットパーク 札幌北広島 G-SHOCK OUTLET', location: { lat: 42.97142, lng: 141.47131 }, kind: 'shop', status: 'web', stay: 90, blurb: '이번에 찾은 곳 중 "할인"이 확실한 유일한 시계 매장. 지샥 위주라 종류는 한정적이고 할인율은 확인 못함.' },
   { id: 'c-marui', theme: 'shop', region: 'sapporo', name: '마루이이마이 삿포로 본점', nameLocal: '丸井今井 札幌本店', location: { lat: 43.05995, lng: 141.35454 }, kind: 'shop', status: 'web', stay: 45, hours: web('시계 매장 기준', '10:30', '19:30'), blurb: '오도리역 근처 백화점. 시계 매장이 있고 해밀턴 공식 취급. 백화점이라 할인은 기대하기 어려워요.' },
 ]
 
