@@ -23,7 +23,8 @@ import {
   updateStop,
   upsertPlace,
 } from '../actions'
-import { Btn, cx, ExtLink, InlineText, Menu, MenuItem, TimeInput, WarningList } from './common'
+import { Btn, cx, ExtLink, InlineText, Menu, MenuItem, TimeInput, WarningList, isWideScreen } from './common'
+import { ParkingChip } from './ParkingInfo'
 import { LodgingFinder } from './LodgingFinder'
 import { PlaceSearch } from './PlaceSearch'
 import { MiniDayBar } from './Timeline'
@@ -263,6 +264,11 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
                 <div className="text-stone-400">아직 없어요</div>
               )}
               {plan.lodging?.phone && <div className="text-xs text-stone-500">☎ {plan.lodging.phone}</div>}
+              {plan.lodging && (
+                <div className="mt-1 text-[12px]">
+                  <ParkingChip place={plan.lodging} byCar onClick={() => openPlace(plan.lodging!.id)} />
+                </div>
+              )}
             </div>
             {plan.lodging && (
               <div className="text-right">
@@ -415,6 +421,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
   const day = plan.day
   const openPlace = useStore((s) => s.openPlace)
   const focusPlace = useStore((s) => s.focusPlace)
+  const focused = useStore((s) => s.focusPlaceId === place?.id)
   const notify = useStore((s) => s.notify)
   const [showNote, setShowNote] = useState(!!stop.note)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stop.id })
@@ -441,10 +448,13 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
       )}
       <div
         className={cx(
-          'group rounded-xl border bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,.04)] transition hover:border-violet-300',
-          sp.warnings.some((w) => w.level === 'critical') ? 'border-red-300' : 'border-stone-200',
+          'group cursor-pointer rounded-xl border bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,.04)] transition hover:border-violet-300',
+          sp.warnings.some((w) => w.level === 'critical') ? 'border-red-300' : focused ? 'border-violet-400 ring-1 ring-violet-300' : 'border-stone-200',
         )}
-        onMouseEnter={() => focusPlace(place.id)}
+        onClick={(e) => {
+          // 버튼·입력칸을 누를 때는 지도를 옮기지 않는다
+          if (!(e.target as HTMLElement).closest('button,input,textarea,select,a')) focusPlace(place.id)
+        }}
       >
         <div className="flex gap-3">
           <div className="flex flex-col items-center gap-1">
@@ -465,12 +475,22 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-start gap-1">
-              <button className="min-w-0 flex-1 text-left" onClick={() => openPlace(place.id)}>
+              <button
+                className="min-w-0 flex-1 text-left"
+                onClick={() => {
+                  // 넓은 화면은 지도가 옆에 있으니 지도만 옮기고, 지도가 없는 폰에서는 상세를 연다
+                  focusPlace(place.id)
+                  if (!isWideScreen()) openPlace(place.id)
+                }}
+              >
                 {sp.meal && <div className="text-xs font-bold text-violet-700">{MEAL_LABEL[sp.meal]}</div>}
                 <div className="truncate text-[15px] font-semibold hover:text-violet-700">
                   {KIND_ICON[place.kind]} {place.name}
                 </div>
                 {place.nameLocal && <div className="truncate text-xs text-stone-400">{place.nameLocal}</div>}
+              </button>
+              <button className="hidden shrink-0 rounded-md px-1.5 py-0.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 md:block" onClick={() => openPlace(place.id)}>
+                상세
               </button>
             </div>
 
@@ -516,6 +536,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
                 </span>
               )}
               {place.phone && <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-600">☎ {place.phone}</span>}
+              <ParkingChip place={place} byCar={!sp.leg || sp.leg.mode === 'DRIVE'} onClick={() => openPlace(place.id)} />
             </div>
 
             {place.season && <div className="mt-1.5 rounded-md bg-violet-50 px-2 py-1 text-[12px] leading-snug text-violet-900">🌸 {place.season}</div>}

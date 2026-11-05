@@ -89,7 +89,7 @@ export const MEAL_LABEL: Record<Meal, string> = { lunch: '🍱 점심', dinner: 
 
 export const shortName = (name: string) => name.replace(/\s*[(（].*?[)）]\s*/g, ' ').trim() || name
 
-const NOT_IN_TITLE: PlaceKind[] = ['hotel', 'airport', 'food', 'cafe']
+const NOT_IN_TITLE: PlaceKind[] = ['hotel', 'airport', 'food', 'cafe', 'other']
 
 /** 일정에서 그날 제목을 만든다. 장소를 넣고 빼면 제목도 따라 바뀐다 */
 export function autoDayTitle(stops: StopPlan[], startPlace?: Place, lodging?: Place): string {
@@ -193,6 +193,10 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
     const depart = arrive + stop.stay
     const hours = place ? checkHours(place, weekday, arrive, depart) : ({ status: 'unknown' } as HoursCheck)
     if (place) warnings.push(...placeWarnings(place, hours, weekday, stop, day.id))
+    if (place && leg?.mode === 'DRIVE') {
+      if (place.parking?.status === 'none') warnings.push({ level: 'warning', text: `차를 댈 곳이 없어요${place.parking.fee ? ` (${place.parking.fee})` : ''} — 근처 주차장을 정하거나 이동 수단을 바꾸세요` })
+      else if (!place.parking) warnings.push({ level: 'info', text: '주차 정보 미확인', fix: { kind: 'openPlace', placeId: place.id, label: '주차 입력' } })
+    }
     waitMin += wait
     stayMin += stop.stay
     t = depart

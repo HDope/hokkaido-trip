@@ -1,4 +1,4 @@
-import type { BusinessStatus, Hours, LatLng, LegMode, Place, PlaceKind } from '../types'
+import type { BusinessStatus, Hours, LatLng, LegMode, Parking, Place, PlaceKind } from '../types'
 import { HOKKAIDO_BOUNDS } from './geo'
 
 // Google Maps Platform — Places API (New) + Routes API 를 REST 로 직접 호출 (둘 다 브라우저 CORS 허용)
@@ -19,6 +19,7 @@ export const DETAIL_FIELDS = [
   'websiteUri',
   'primaryType',
   'types',
+  'parkingOptions',
 ].join(',')
 
 export class GoogleApiError extends Error {
@@ -107,6 +108,7 @@ export async function autocomplete(key: string, input: string, sessionToken: str
 }
 
 type GPlace = {
+  parkingOptions?: GParking
   id: string
   displayName?: { text: string }
   formattedAddress?: string
@@ -218,6 +220,22 @@ function kindFromTypes(types: string[] = []): PlaceKind {
   return 'sight'
 }
 
+export type GParking = Partial<Record<'freeParkingLot' | 'paidParkingLot' | 'freeStreetParking' | 'paidStreetParking' | 'valetParking' | 'freeGarageParking' | 'paidGarageParking', boolean>>
+
+/** 구글은 주차장 유무만 알려주고 요금은 주지 않는다. 표시가 없으면 모른다고 둔다 */
+export function parkingFromGoogle(o?: GParking): Parking | undefined {
+  if (!o || !Object.keys(o).length) return undefined
+  const free = o.freeParkingLot || o.freeGarageParking
+  const paid = o.paidParkingLot || o.paidGarageParking
+  const street = o.freeStreetParking || o.paidStreetParking
+  if (free && paid) return { status: 'free', note: '구글에 무료와 유료가 함께 표시돼 있어요. 조건을 현장에서 확인하세요', source: 'google' }
+  if (free) return { status: 'free', source: 'google' }
+  if (paid) return { status: 'paid', source: 'google' }
+  if (street) return { status: 'nearby', note: '구글에는 길가 주차만 표시돼 있어요. 일본은 길가 주차가 거의 안 되니 근처 주차장을 찾으세요', source: 'google' }
+  if (Object.values(o).every((v) => v === false)) return { status: 'none', note: '구글에 주차장이 없다고 표시돼 있어요', source: 'google' }
+  return undefined
+}
+
 /** 구글 응답을 앱의 Place 필드로 변환 (기존 장소에 덮어쓸 부분만) */
 export function toPlaceFields(g: GPlace): Partial<Place> {
   const hours: Hours | undefined = g.regularOpeningHours?.periods
@@ -236,6 +254,7 @@ export function toPlaceFields(g: GPlace): Partial<Place> {
     businessStatus: g.businessStatus,
     hours,
     phone: g.nationalPhoneNumber,
+    parking: parkingFromGoogle(g.parkingOptions),
     rating: g.rating,
     ratingCount: g.userRatingCount,
     website: g.websiteUri,

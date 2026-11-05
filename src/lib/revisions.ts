@@ -129,3 +129,53 @@ export function summarizePlans(plans: DayPlan[]): VersionSummary {
     carFreeDays: plans.filter((p) => p.stops.length > 0 && p.driveMin === 0).length,
   }
 }
+
+// ---------- 버전 비교 ----------
+
+export type DigestPlace = { key: string; name: string; kind: Place['kind']; golf: boolean; days: number[]; nights: number; meals: ('lunch' | 'dinner')[] }
+export type VersionDigest = { places: DigestPlace[] }
+
+const GOLF = /골프|golf|\bGC\b|\bCC\b/i
+
+/** 같은 장소를 버전끼리 맞춰 보기 위한 값. 구글 장소가 연결돼 있으면 그걸 쓴다 */
+const placeKey = (p: Place) => p.googlePlaceId ?? p.id
+
+/** 한 버전에서 어디를 며칠째에 가는지 뽑는다. 다 받지 않아도 비교할 수 있게 작게 만든다 */
+export function digestTrip(t: Trip): VersionDigest {
+  const map = new Map<string, DigestPlace>()
+  const at = (p: Place) => {
+    const key = placeKey(p)
+    let d = map.get(key)
+    if (!d) map.set(key, (d = { key, name: shortName(p.name), kind: p.kind, golf: GOLF.test(p.name), days: [], nights: 0, meals: [] }))
+    return d
+  }
+  t.days.forEach((day, i) => {
+    for (const s of day.stops) {
+      const p = t.places[s.placeId]
+      if (!p) continue
+      const d = at(p)
+      if (!d.days.includes(i + 1)) d.days.push(i + 1)
+      if ((s.meal === 'lunch' || s.meal === 'dinner') && !d.meals.includes(s.meal)) d.meals.push(s.meal)
+    }
+    const stay = day.lodgingPlaceId ? t.places[day.lodgingPlaceId] : undefined
+    if (stay) {
+      const d = at(stay)
+      d.nights++
+      if (!d.days.includes(i + 1)) d.days.push(i + 1)
+    }
+  })
+  return { places: [...map.values()] }
+}
+
+/** 연속된 날은 D2~4 로 줄여 쓴다 */
+export function dayRange(days: number[]): string {
+  const sorted = [...days].sort((a, b) => a - b)
+  const out: string[] = []
+  for (let i = 0; i < sorted.length; i++) {
+    let j = i
+    while (sorted[j + 1] === sorted[j] + 1) j++
+    out.push(i === j ? `D${sorted[i]}` : `D${sorted[i]}~${sorted[j]}`)
+    i = j
+  }
+  return out.join(' ')
+}

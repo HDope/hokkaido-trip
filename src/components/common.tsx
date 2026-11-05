@@ -4,6 +4,9 @@ import type { Warning } from '../lib/schedule'
 import { LEVEL_META } from '../ui'
 import { applyFix } from '../actions'
 
+/** 일정과 지도가 나란히 보이는 넓이인지 (Tailwind md) */
+export const isWideScreen = () => window.matchMedia('(min-width: 768px)').matches
+
 export function cx(...c: (string | false | undefined | null)[]) {
   return c.filter(Boolean).join(' ')
 }

@@ -10,6 +10,8 @@ const TRAVEL: Record<LegMode, string> = { DRIVE: 'driving', WALK: 'walking', TRA
 const ll = (p: Place) => `${p.location.lat},${p.location.lng}`
 
 /** 구글맵 '장소' 링크 — 앱에서 열면 영업시간·리뷰·저장까지 바로 가능 */
+const PARKING_TEXT = { free: '무료 주차', paid: '유료 주차', nearby: '근처 유료 주차', none: '주차 불가' } as const
+
 export function placeUrl(p: Place): string {
   if (p.googleMapsUri) return p.googleMapsUri
   const qs = new URLSearchParams({ api: '1', query: p.nameLocal ?? p.name })
@@ -149,6 +151,7 @@ ${pl.phone ? `<div class="meta">☎ <a href="tel:${esc(pl.phone)}">${esc(pl.phon
 ${pl.mapcode ? `<div class="meta">맵코드 <b>${esc(pl.mapcode)}</b></div>` : ''}
 ${s.stop.note ? `<div class="note">📝 ${esc(s.stop.note)}</div>` : ''}
 ${pl.season ? `<div class="note">🌸 ${esc(pl.season)}</div>` : ''}
+${pl.parking ? `<div class="note">🅿️ ${esc(PARKING_TEXT[pl.parking.status])}${pl.parking.fee ? ` · ${esc(pl.parking.fee)}` : ''}${pl.parking.note ? ` · ${esc(pl.parking.note)}` : ''}</div>` : ''}
 ${pl.tips ? `<div class="note">💡 ${esc(pl.tips)}</div>` : ''}
 ${ws.map((w) => `<div class="warn">${LEVEL_ICON[w.level]} ${esc(w.text)}</div>`).join('')}
 <div class="links"><a href="${esc(directionsUrl(pl, undefined, s.stop.legMode ?? 'DRIVE'))}">길찾기</a><a href="${esc(placeUrl(pl))}">구글맵에서 보기</a></div>

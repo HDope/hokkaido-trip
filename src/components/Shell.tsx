@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core'
 import { useStore } from '../store'
 import { useGoogle } from '../hooks'
-import type { DayPlan } from '../lib/schedule'
+import { shortName, type DayPlan } from '../lib/schedule'
 import { dayDate, fmtDate, fmtDur } from '../lib/time'
 import { dayColor, LEVEL_META } from '../ui'
 import { addDay } from '../actions'
@@ -103,9 +103,12 @@ export function Sidebar({ plans }: { plans: DayPlan[] }) {
       <NavBtn active={view === 'candidates'} onClick={() => setView('candidates')}>
         <span>🎯</span> 테마 후보 지도
       </NavBtn>
+      <NavBtn active={view === 'compare'} onClick={() => setView('compare')}>
+        <span>🔀</span> 버전 비교
+      </NavBtn>
       <div className="mt-2 mb-1 px-2 text-[11px] font-semibold tracking-wide text-stone-400">일자별</div>
-      {plans.map((p) => (
-        <DayNavItem key={p.day.id} p={p} active={view === 'day' && selectedDayId === p.day.id} onClick={() => selectDay(p.day.id)} />
+      {plans.map((p, i) => (
+        <DayNavItem key={p.day.id} p={p} prevLodgingId={plans[i - 1]?.lodging?.id} active={view === 'day' && selectedDayId === p.day.id} onClick={() => selectDay(p.day.id)} />
       ))}
       <button className="rounded-xl border border-dashed border-stone-300 px-2.5 py-2 text-sm text-stone-500 hover:bg-white" onClick={() => addDay()}>
         ＋ 날짜 추가
@@ -124,8 +127,9 @@ export function Sidebar({ plans }: { plans: DayPlan[] }) {
   )
 }
 
-function DayNavItem({ p, active, onClick }: { p: DayPlan; active: boolean; onClick: () => void }) {
+function DayNavItem({ p, prevLodgingId, active, onClick }: { p: DayPlan; prevLodgingId?: string; active: boolean; onClick: () => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: `day:${p.day.id}` })
+  const checkIn = !!p.lodging && p.lodging.id !== prevLodgingId
   const issue = (['critical', 'serious', 'warning'] as const).find((l) => p.counts[l])
   return (
     <button
@@ -151,6 +155,16 @@ function DayNavItem({ p, active, onClick }: { p: DayPlan; active: boolean; onCli
         <MiniDayBar p={p} />
       </div>
       <div className="mt-1 text-[11px] text-stone-500">{p.driveMin > 0 ? `🚗 ${fmtDur(p.driveMin)}` : '🚶 차 없는 날'}</div>
+      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600">
+        {p.lodging ? (
+          <>
+            <span className="min-w-0 truncate">🛏 {shortName(p.lodging.name)}</span>
+            {checkIn && <span className="shrink-0 rounded bg-violet-100 px-1 font-semibold text-violet-800">체크인</span>}
+          </>
+        ) : (
+          <span className="text-stone-400">🛏 숙박 없음</span>
+        )}
+      </div>
     </button>
   )
 }
@@ -190,6 +204,9 @@ export function DayChips({ plans }: { plans: DayPlan[] }) {
       </button>
       <button className={chip(view === 'candidates')} onClick={() => setView('candidates')}>
         🎯 후보
+      </button>
+      <button className={chip(view === 'compare')} onClick={() => setView('compare')}>
+        🔀 비교
       </button>
       {plans.map((p) => (
         <DayChip key={p.day.id} p={p} active={view === 'day' && selectedDayId === p.day.id} onClick={() => selectDay(p.day.id)} />

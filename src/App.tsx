@@ -10,6 +10,7 @@ import { Overview } from './components/Overview'
 import { CandidatesView } from './components/CandidatesView'
 import { PlacesView } from './components/PlacesView'
 import { ChecklistView } from './components/ChecklistView'
+import { CompareView } from './components/CompareView'
 import { MapPanel } from './components/MapPanel'
 import { PlaceDrawer } from './components/PlaceDrawer'
 import { SettingsModal } from './components/SettingsModal'
@@ -120,23 +121,33 @@ function Planner() {
         <aside className="hidden w-60 shrink-0 border-r border-stone-200 xl:block">
           <Sidebar plans={plans} />
         </aside>
-        <main className={cx('min-w-0 shrink-0 overflow-y-auto bg-[#faf9f7] md:w-[460px] md:border-r md:border-stone-200 2xl:w-[540px]', mobileMap ? 'hidden md:block' : 'w-full')}>
+        <main
+          className={cx(
+            'min-w-0 overflow-y-auto bg-[#faf9f7]',
+            view === 'compare' ? 'w-full flex-1' : cx('shrink-0 md:w-[460px] md:border-r md:border-stone-200 2xl:w-[540px]', mobileMap ? 'hidden md:block' : 'w-full'),
+          )}
+        >
           {view === 'overview' && <Overview plans={plans} />}
           {view === 'candidates' && <CandidatesView plans={plans} />}
           {view === 'day' && plan && <DayView plan={plan} plans={plans} />}
           {view === 'places' && <PlacesView plans={plans} />}
           {view === 'checklist' && <ChecklistView />}
+          {view === 'compare' && <CompareView plans={plans} />}
         </main>
-        <section className={cx('min-w-0 flex-1', mobileMap ? 'block' : 'hidden md:block')}>
-          <MapPanel plans={plans} />
-        </section>
+        {view !== 'compare' && (
+          <section className={cx('min-w-0 flex-1', mobileMap ? 'block' : 'hidden md:block')}>
+            <MapPanel plans={plans} />
+          </section>
+        )}
       </div>
-      <button
-        className="fixed right-4 bottom-4 z-[800] rounded-full bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white shadow-lg md:hidden"
-        onClick={() => setMobileMap(!mobileMap)}
-      >
-        {mobileMap ? '📋 일정' : '🗺️ 지도'}
-      </button>
+      {view !== 'compare' && (
+        <button
+          className="fixed right-4 bottom-4 z-[800] rounded-full bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white shadow-lg md:hidden"
+          onClick={() => setMobileMap(!mobileMap)}
+        >
+          {mobileMap ? '📋 일정' : '🗺️ 지도'}
+        </button>
+      )}
       <PlaceDrawer />
       <SettingsModal />
       <ExportModal />

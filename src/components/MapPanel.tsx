@@ -53,6 +53,7 @@ export function MapPanel({ plans }: { plans: DayPlan[] }) {
   const apiKey = useStore((s) => s.apiKey)
   const openPlace = useStore((s) => s.openPlace)
   const focusPlaceId = useStore((s) => s.focusPlaceId)
+  const focusNonce = useStore((s) => s.focusNonce)
   const notify = useStore((s) => s.notify)
   const [jsFailed, setJsFailed] = useState(false)
   const [showOthers, setShowOthers] = useState(false)
@@ -132,7 +133,7 @@ export function MapPanel({ plans }: { plans: DayPlan[] }) {
   const panned = CANDIDATES.find((c) => c.id === candPanId)
   const focus = isCand
     ? panned && { position: panned.location, key: panned.id }
-    : focusPlace && { position: focusPlace.location, key: focusPlace.id }
+    : focusPlace && { position: focusPlace.location, key: `${focusPlace.id}:${focusNonce}` }
   // 후보 핀을 누르면 지도는 그대로 두고 목록에서 그 항목을 보여준다
   const onMarkerClick = isCand
     ? (id: string) => (id.startsWith('region:') ? setCand({ candRegion: id.slice(7) as RegionId, candActiveId: undefined }) : setCand({ candActiveId: id }))

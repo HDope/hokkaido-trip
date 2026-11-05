@@ -10,7 +10,7 @@ const LS_TRIP_AT = 'hk-trip-backup-at'
 const LS_KEY = 'hk-gmaps-key'
 const HISTORY_LIMIT = 60
 
-export type View = 'day' | 'overview' | 'candidates' | 'places' | 'checklist'
+export type View = 'day' | 'overview' | 'candidates' | 'places' | 'checklist' | 'compare'
 
 type SaveStatus = 'loading' | 'saved' | 'saving' | 'dirty' | 'error' | 'local' | 'offline'
 
@@ -30,6 +30,7 @@ type State = {
   selectedDayId?: string
   openPlaceId?: string
   focusPlaceId?: string
+  focusNonce: number // 같은 장소를 다시 눌러도 지도가 돌아오도록
   apiKey: string
   googleStatus: 'none' | 'unknown' | 'ok' | 'error'
   googleMessage?: string
@@ -83,6 +84,7 @@ export const useStore = create<State>((set, get) => ({
   trip: null,
   routes: {},
   view: 'day',
+  focusNonce: 0,
   apiKey: readKey(),
   googleStatus: readKey() ? 'unknown' : 'none',
   saveStatus: 'loading',
@@ -200,7 +202,7 @@ export const useStore = create<State>((set, get) => ({
   setView: (view) => set({ view }),
   selectDay: (id) => set({ selectedDayId: id, view: 'day' }),
   openPlace: (id) => set({ openPlaceId: id }),
-  focusPlace: (id) => set({ focusPlaceId: id }),
+  focusPlace: (id) => set((st) => ({ focusPlaceId: id, focusNonce: st.focusNonce + 1 })),
 
   setApiKey(k) {
     const key = k.trim()
@@ -243,7 +245,7 @@ function viewFromHash(trip: Trip): Pick<State, 'view' | 'selectedDayId'> {
   const m = /^d(\d+)$/.exec(h)
   const first = trip.days[0]?.id
   if (m) return { view: 'day', selectedDayId: trip.days[Number(m[1]) - 1]?.id ?? first }
-  if (h === 'overview' || h === 'candidates' || h === 'places' || h === 'checklist') return { view: h, selectedDayId: first }
+  if (h === 'overview' || h === 'candidates' || h === 'places' || h === 'checklist' || h === 'compare') return { view: h, selectedDayId: first }
   return { view: 'day', selectedDayId: first }
 }
 

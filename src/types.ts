@@ -15,6 +15,18 @@ export type PlaceKind = 'sight' | 'food' | 'cafe' | 'shop' | 'onsen' | 'hotel' |
 
 export type BusinessStatus = 'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY'
 
+// 주차: free 무료 전용 주차장 / paid 유료 전용 주차장 / nearby 전용은 없고 근처 유료 / none 차를 댈 곳이 없음
+export type ParkingStatus = 'free' | 'paid' | 'nearby' | 'none'
+
+export type Parking = {
+  status: ParkingStatus
+  fee?: string // 대략 요금. 없으면 요금을 확인하지 못한 것
+  note?: string
+  // 어디서 나온 정보인지: official 공식 / web 여행 사이트·안내 글 / google 구글 표시(요금 없음) / estimate 주변 시세로 추정 / manual 직접 입력
+  source: 'official' | 'web' | 'google' | 'estimate' | 'manual'
+  url?: string
+}
+
 export type Place = {
   id: string
   name: string
@@ -28,6 +40,7 @@ export type Place = {
   hours?: Hours
   alwaysOpen?: boolean // 야외 명소 등 영업시간 개념이 없는 곳
   phone?: string // 렌터카 내비 검색용
+  parking?: Parking
   mapcode?: string
   rating?: number
   ratingCount?: number

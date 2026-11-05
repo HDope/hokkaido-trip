@@ -6,7 +6,7 @@ import type { DayPlan } from '../lib/schedule'
 import { verifyAll } from '../lib/verify'
 import { upsertPlace } from '../actions'
 import { dayColor, KIND_ICON, KIND_LABEL } from '../ui'
-import { Btn, cx } from './common'
+import { Btn, cx, isWideScreen } from './common'
 import { AddToDayMenu } from './AddToDayMenu'
 import { PlaceSearch } from './PlaceSearch'
 
@@ -90,9 +90,9 @@ export function PlacesView({ plans }: { plans: DayPlan[] }) {
 
       <ul className="mt-3 space-y-2">
         {list.map((p) => (
-          <li key={p.id} className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2.5 hover:border-violet-300" onMouseEnter={() => focusPlace(p.id)}>
+          <li key={p.id} className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2.5 hover:border-violet-300" onClick={(e) => { if (!(e.target as HTMLElement).closest('button,input,a')) focusPlace(p.id) }}>
             <span className="text-lg">{KIND_ICON[p.kind]}</span>
-            <button className="min-w-0 flex-1 text-left" onClick={() => openPlace(p.id)}>
+            <button className="min-w-0 flex-1 text-left" onClick={() => { focusPlace(p.id); if (!isWideScreen()) openPlace(p.id) }}>
               <div className="truncate text-sm font-semibold">{p.name}</div>
               <div className="truncate text-xs text-stone-500">
                 {p.nameLocal ?? p.address}
@@ -102,6 +102,9 @@ export function PlacesView({ plans }: { plans: DayPlan[] }) {
               {p.season && <div className="truncate text-xs text-violet-700">🌸 {p.season}</div>}
             </button>
             <div className="flex shrink-0 items-center gap-1">
+              <button className="hidden rounded-md px-1.5 py-0.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 md:block" onClick={() => openPlace(p.id)}>
+                상세
+              </button>
               {(usage[p.id] ?? []).map((i) => (
                 <span key={i} className="rounded px-1.5 py-0.5 text-[11px] font-bold text-white" style={{ background: dayColor(i) }}>
                   D{i + 1}

@@ -10,6 +10,7 @@ import { deletePlace, updatePlace } from '../actions'
 import { dayColor, KIND_ICON, KIND_LABEL } from '../ui'
 import { Btn, cx, ExtLink } from './common'
 import { PlaceSearch } from './PlaceSearch'
+import { ParkingSection } from './ParkingInfo'
 
 export function PlaceDrawer() {
   const id = useStore((s) => s.openPlaceId)
@@ -209,6 +210,8 @@ function PlaceBody({ place }: { place: Place }) {
         {place.hours?.note && <p className="mt-1.5 text-xs text-stone-500">※ {place.hours.note}</p>}
         <p className="mt-1.5 text-xs text-stone-400">구글 영업시간은 '평상시' 기준이에요. 계절 운영·임시휴무는 출발 1~2주 전에 다시 확인하세요.</p>
       </section>
+
+      <ParkingSection place={place} />
 
       {/* 내비 */}
       <section className="grid grid-cols-2 gap-3">
