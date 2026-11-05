@@ -1,4 +1,5 @@
 import type { RouteLeg, Trip } from '../types'
+import type { VersionSummary } from './revisions'
 
 // 일정을 어디에 저장하느냐.
 //  - server: 맥에서 개발 서버로 띄울 때 data/trip.json
@@ -7,6 +8,42 @@ import type { RouteLeg, Trip } from '../types'
 
 export type Snapshot = { trip: Trip; routes: Record<string, RouteLeg> }
 export type Changed = { trip: boolean; routes: boolean }
+
+/** 저장할 때마다 자동으로 남는 기록 */
+export type HistoryEntry = { sha: string; date: string; message: string }
+
+/** 이름을 붙여 따로 보관한 일정 */
+export type VersionMeta = {
+  id: string
+  name: string
+  note?: string
+  createdAt: string
+  fingerprint?: string
+  summary?: VersionSummary
+}
+
+export interface Revisions {
+  history(page: number): Promise<HistoryEntry[]>
+  tripAt(sha: string): Promise<Trip | null>
+  versions(): Promise<VersionMeta[]>
+  readVersion(id: string): Promise<Trip | null>
+  saveVersion(meta: VersionMeta, trip: Trip): Promise<void>
+  updateVersion(id: string, patch: Partial<VersionMeta>): Promise<void>
+  deleteVersion(id: string): Promise<void>
+}
+
+export const HISTORY_PAGE = 30
+
+export class HttpError extends Error {
+  status: number
+  constructor(status: number) {
+    super(explainStatus(status))
+    this.status = status
+  }
+}
+
+/** 토큰이 틀렸거나 저장소를 못 여는 경우. 네트워크가 잠깐 끊긴 것과 구분한다 */
+export const isAccessProblem = (e: unknown) => e instanceof HttpError && (e.status === 401 || e.status === 404)
 
 export interface Backend {
   kind: 'server' | 'cloud'
@@ -17,9 +54,11 @@ export interface Backend {
   /** 조건 없이 현재 저장본 (충돌 해결용) */
   latest(): Promise<Snapshot | null>
   /** 저장. 그사이 다른 기기가 먼저 저장했으면 'conflict' */
-  push(snapshot: Snapshot, changed: Changed): Promise<'ok' | 'conflict'>
+  push(snapshot: Snapshot, changed: Changed, message?: string): Promise<'ok' | 'conflict'>
   readKey(): Promise<string | undefined>
   writeKey(key: string): Promise<void>
+  /** 버전 기록 (웹 버전에서만) */
+  revisions?: Revisions
 }
 
 // ---------- 맥 개발 서버 ----------
@@ -142,7 +181,7 @@ export function cloudBackend(cfg: CloudConfig): Backend {
       headers: { ...auth, Accept: 'application/vnd.github.sha', ...(conditional && headEtag ? { 'If-None-Match': headEtag } : {}) },
     })
     if (res.status === 304) return head!
-    if (!res.ok) throw new Error(explainStatus(res.status))
+    if (!res.ok) throw new HttpError(res.status)
     headEtag = res.headers.get('ETag')
     return (await res.text()).trim()
   }
@@ -153,13 +192,21 @@ export function cloudBackend(cfg: CloudConfig): Backend {
       delete shas[name]
       return undefined
     }
-    if (!res.ok) throw new Error(explainStatus(res.status))
+    if (!res.ok) throw new HttpError(res.status)
     const file = (await res.json()) as { sha: string; content?: string; size?: number }
     shas[name] = file.sha
     if (file.content || !file.size) return fromBase64(file.content ?? '')
     // 1MB 가 넘는 파일은 내용이 빠져서 온다
     const raw = await fetch(`${base}/contents/${name}${ref ? `?ref=${ref}` : ''}`, { cache: 'no-store', headers: { ...auth, Accept: 'application/vnd.github.raw+json' } })
     return raw.text()
+  }
+
+  /** 내용만 읽는다. 저장에 쓰는 파일 정보(shas)를 건드리지 않아 예전 기록을 읽어도 안전하다 */
+  async function readRaw(name: string, ref?: string): Promise<string | undefined> {
+    const res = await fetch(`${base}/contents/${name}${ref ? `?ref=${ref}` : ''}`, { cache: 'no-store', headers: { ...auth, Accept: 'application/vnd.github.raw+json' } })
+    if (res.status === 404) return undefined
+    if (!res.ok) throw new HttpError(res.status)
+    return res.text()
   }
 
   async function readAll(ref: string): Promise<Snapshot | null> {
@@ -170,14 +217,14 @@ export function cloudBackend(cfg: CloudConfig): Backend {
   }
 
   /** 저장. 'conflict' 면 그사이 다른 기기가 같은 파일을 먼저 저장한 것 */
-  async function writeFile(name: string, content: string): Promise<'ok' | 'conflict'> {
+  async function writeFile(name: string, content: string, message?: string): Promise<'ok' | 'conflict'> {
     const res = await fetch(`${base}/contents/${name}`, {
       method: 'PUT',
       headers: { ...auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: `update ${name}`, content: toBase64(content), ...(shas[name] ? { sha: shas[name] } : {}) }),
+      body: JSON.stringify({ message: message ?? `update ${name}`, content: toBase64(content), ...(shas[name] ? { sha: shas[name] } : {}) }),
     })
     if (res.status === 409 || res.status === 422) return 'conflict'
-    if (!res.ok) throw new Error(explainStatus(res.status))
+    if (!res.ok) throw new HttpError(res.status)
     const done = (await res.json()) as { content: { sha: string }; commit: { sha: string; parents?: { sha: string }[] } }
     shas[name] = done.content.sha
     if (head && done.commit.parents?.[0]?.sha !== head) missedRemote = true
@@ -186,8 +233,63 @@ export function cloudBackend(cfg: CloudConfig): Backend {
     return 'ok'
   }
 
+  const VERSION_INDEX = 'versions/index.json'
+
+  async function editIndex(edit: (list: VersionMeta[]) => VersionMeta[], message: string) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const text = await readFile(VERSION_INDEX)
+      const list = text ? (JSON.parse(text) as VersionMeta[]) : []
+      if ((await writeFile(VERSION_INDEX, JSON.stringify(edit(list), null, 1), message)) === 'ok') return
+    }
+    throw new Error('버전 목록을 저장하지 못했어요. 다시 시도해 주세요')
+  }
+
+  const revisions: Revisions = {
+    async history(page) {
+      const res = await fetch(`${base}/commits?path=trip.json&per_page=${HISTORY_PAGE}&page=${page}`, { cache: 'no-store', headers: auth })
+      if (!res.ok) throw new HttpError(res.status)
+      const list = (await res.json()) as { sha: string; commit: { message: string; author?: { date?: string }; committer?: { date?: string } } }[]
+      return list.map((c) => ({ sha: c.sha, date: c.commit.committer?.date ?? c.commit.author?.date ?? '', message: c.commit.message }))
+    },
+    async tripAt(sha) {
+      const text = await readRaw('trip.json', sha)
+      return text ? (JSON.parse(text) as Trip) : null
+    },
+    async versions() {
+      const text = await readRaw(VERSION_INDEX)
+      return text ? (JSON.parse(text) as VersionMeta[]) : []
+    },
+    async readVersion(id) {
+      const text = await readRaw(`versions/${id}.json`)
+      return text ? (JSON.parse(text) as Trip) : null
+    },
+    async saveVersion(meta, trip) {
+      const result = await writeFile(`versions/${meta.id}.json`, JSON.stringify({ ...trip, routeCache: undefined }, null, 1), `버전 저장: ${meta.name}`)
+      if (result === 'conflict') throw new Error('같은 이름의 버전 파일이 이미 있어요')
+      await editIndex((list) => [...list, meta], `버전 목록: ${meta.name} 추가`)
+    },
+    async updateVersion(id, patch) {
+      await editIndex((list) => list.map((v) => (v.id === id ? { ...v, ...patch } : v)), '버전 목록 수정')
+    },
+    async deleteVersion(id) {
+      const name = `versions/${id}.json`
+      await readFile(name)
+      if (shas[name]) {
+        const res = await fetch(`${base}/contents/${name}`, {
+          method: 'DELETE',
+          headers: { ...auth, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: '버전 삭제', sha: shas[name] }),
+        })
+        if (!res.ok) throw new HttpError(res.status)
+        delete shas[name]
+      }
+      await editIndex((list) => list.filter((v) => v.id !== id), '버전 목록에서 삭제')
+    },
+  }
+
   return {
     kind: 'cloud',
+    revisions,
     saveDelayMs: 2500,
     pollMs: 15000,
     async pull() {
@@ -202,9 +304,9 @@ export function cloudBackend(cfg: CloudConfig): Backend {
       missedRemote = false
       return readAll(head)
     },
-    async push({ trip, routes }, changed) {
+    async push({ trip, routes }, changed, message) {
       if (changed.trip) {
-        const result = await writeFile('trip.json', JSON.stringify({ ...trip, routeCache: undefined }, null, 1))
+        const result = await writeFile('trip.json', JSON.stringify({ ...trip, routeCache: undefined }, null, 1), message)
         if (result === 'conflict') return 'conflict'
       }
       if (changed.routes) {
@@ -245,5 +347,5 @@ export async function checkConnection(cfg: CloudConfig): Promise<void> {
     cache: 'no-store',
     headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json' },
   })
-  if (!res.ok) throw new Error(explainStatus(res.status))
+  if (!res.ok) throw new HttpError(res.status)
 }

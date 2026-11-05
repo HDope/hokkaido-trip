@@ -18,6 +18,7 @@ export function TopBar() {
   const canRedo = useStore((s) => s.future.length > 0)
   const setShowSettings = useStore((s) => s.setShowSettings)
   const setShowExport = useStore((s) => s.setShowExport)
+  const setShowVersions = useStore((s) => s.setShowVersions)
   const googleStatus = useStore((s) => s.googleStatus)
   const kind = useStore((s) => s.backendKind)
   const google = useGoogle()
@@ -30,6 +31,7 @@ export function TopBar() {
     dirty: ['저장 대기', 'text-stone-400'],
     error: ['저장 실패 — 서버 확인', 'text-red-600'],
     local: ['브라우저에만 저장', 'text-amber-600'],
+    offline: ['오프라인', 'text-amber-600'],
   }[saveStatus]
 
   return (
@@ -61,6 +63,9 @@ export function TopBar() {
           ↷
         </button>
       </div>
+      <button className="shrink-0 rounded-lg px-1.5 py-1 text-[13px] font-semibold text-stone-700 hover:bg-stone-100" onClick={() => setShowVersions(true)} title="저장된 버전과 변경 기록">
+        🕘<span className="hidden sm:inline"> 버전</span>
+      </button>
       <button
         className={cx(
           'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',

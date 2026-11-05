@@ -2,20 +2,28 @@ import { create } from 'zustand'
 import type { RouteLeg, Trip } from './types'
 import type { RegionId, ThemeId } from './candidates'
 import { createSeedTrip } from './seed'
-import { clearConnectHash, cloudBackend, consumeConnectLink, readCloudConfig, serverBackend, type Backend, type Snapshot } from './lib/backend'
+import { clearConnectHash, cloudBackend, consumeConnectLink, isAccessProblem, readCloudConfig, serverBackend, type Backend, type Revisions, type Snapshot } from './lib/backend'
+import { changeSummary, describeChanges } from './lib/revisions'
 
 const LS_TRIP = 'hk-trip-backup'
+const LS_TRIP_AT = 'hk-trip-backup-at'
 const LS_KEY = 'hk-gmaps-key'
 const HISTORY_LIMIT = 60
 
 export type View = 'day' | 'overview' | 'candidates' | 'places' | 'checklist'
 
-type SaveStatus = 'loading' | 'saved' | 'saving' | 'dirty' | 'error' | 'local'
+type SaveStatus = 'loading' | 'saved' | 'saving' | 'dirty' | 'error' | 'local' | 'offline'
+
+/** 예전 버전을 보는 중이면 그 정보. 이때 화면의 trip 은 그 버전이고 고칠 수 없다 */
+export type Preview = { label: string; kind: 'version' | 'history'; id: string }
 
 type State = {
   trip: Trip | null
   routes: Record<string, RouteLeg>
   needConnect?: { error?: string } // 웹 버전인데 아직 일정 저장소와 연결되지 않음
+  offlineSince?: string // 인터넷이 끊겨 저장해 둔 일정을 보여주는 중이면, 그 일정을 받은 시각
+  preview?: Preview
+  showVersions: boolean
   offerHomeScreen: boolean // 아이폰에서 연결 링크로 처음 열었을 때 홈 화면 추가 안내
   backendKind?: Backend['kind']
   view: View
@@ -52,6 +60,7 @@ type State = {
   setGoogleStatus: (s: State['googleStatus'], msg?: string, reason?: string) => void
   setShowSettings: (v: boolean) => void
   setShowExport: (v: boolean) => void
+  setShowVersions: (v: boolean) => void
   notify: (text: string) => void
   replaceTrip: (t: Trip) => void
   setCand: (patch: Partial<Pick<State, 'candThemes' | 'candRegion' | 'candActiveId' | 'candPanId'>>) => void
@@ -81,6 +90,7 @@ export const useStore = create<State>((set, get) => ({
   future: [],
   showSettings: false,
   showExport: false,
+  showVersions: false,
   candThemes: [],
   offerHomeScreen: false,
 
@@ -107,7 +117,12 @@ export const useStore = create<State>((set, get) => ({
       reached = true
     } catch (e) {
       if (cloud) {
-        set({ needConnect: { error: (e as Error).message } })
+        const cached = isAccessProblem(e) ? null : readCachedTrip()
+        if (cached) {
+          enterOffline(cached.trip, cached.at)
+          return
+        }
+        set({ needConnect: { error: e instanceof TypeError ? '인터넷에 연결되어 있지 않아요. 연결되면 다시 열어주세요' : (e as Error).message } })
         return
       }
       backend = null // 서버 없이 열린 경우 → 이 브라우저에만 저장
@@ -131,6 +146,10 @@ export const useStore = create<State>((set, get) => ({
       backendKind: backend?.kind,
       saveStatus: reached ? 'saved' : 'local',
     })
+    if (reached) {
+      lastSaved = trip
+      cacheForOffline()
+    }
     if (isNew) {
       routesDirty = true
       scheduleSave(true)
@@ -143,7 +162,7 @@ export const useStore = create<State>((set, get) => ({
 
   mutate(fn) {
     const cur = get().trip
-    if (!cur) return
+    if (!cur || isReadOnly(true)) return
     const next = structuredClone(cur)
     fn(next)
     next.updatedAt = new Date().toISOString()
@@ -153,7 +172,7 @@ export const useStore = create<State>((set, get) => ({
 
   undo() {
     const { past, trip, future } = get()
-    if (!past.length || !trip) return
+    if (!past.length || !trip || isReadOnly()) return
     const prev = past[past.length - 1]
     set({ trip: prev, past: past.slice(0, -1), future: [trip, ...future] })
     scheduleSave(true)
@@ -161,7 +180,7 @@ export const useStore = create<State>((set, get) => ({
 
   redo() {
     const { past, trip, future } = get()
-    if (!future.length || !trip) return
+    if (!future.length || !trip || isReadOnly()) return
     const [next, ...rest] = future
     set({ trip: next, past: [...past, trip], future: rest })
     scheduleSave(true)
@@ -198,9 +217,14 @@ export const useStore = create<State>((set, get) => ({
   setGoogleStatus: (googleStatus, googleMessage, googleReason) => set({ googleStatus, googleMessage, googleReason }),
   setShowSettings: (showSettings) => set({ showSettings }),
   setShowExport: (showExport) => set({ showExport }),
-  notify: (text) => set({ toast: { text, id: Date.now() } }),
+  setShowVersions: (showVersions) => set({ showVersions }),
+  // 보기 전용일 때는 수정이 막히므로 "바꿨어요" 같은 안내도 내보내지 않는다
+  notify: (text) => {
+    if (!get().preview && !get().offlineSince) set({ toast: { text, id: Date.now() } })
+  },
 
   replaceTrip(t) {
+    if (isReadOnly(true)) return
     const cur = get().trip
     set({
       trip: t,
@@ -237,7 +261,143 @@ let routesDirty = false
 let saving = false
 let saveAgain = false
 
+// 예전 버전을 보는 동안 화면 뒤에 맡겨 둔 지금 일정
+let stash: { trip: Trip; past: Trip[]; future: Trip[] } | null = null
+let lastSaved: Trip | null = null // 저장소에 있는 마지막 일정 (변경 기록의 제목을 만드는 기준)
+let nextMessage: string | undefined
+
+function isReadOnly(tell = false): boolean {
+  const st = useStore.getState()
+  const reason = st.preview ? '예전 버전을 보는 중이라 고칠 수 없어요. 고치려면 먼저 이 버전으로 바꾸세요' : st.offlineSince ? '인터넷이 끊겨 있어 고칠 수 없어요. 다시 연결되면 고칠 수 있어요' : undefined
+  if (reason && tell) useStore.setState({ toast: { text: reason, id: Date.now() } })
+  return !!reason
+}
+
+// ---------- 인터넷이 끊겼을 때 ----------
+
+function cacheForOffline() {
+  const st = useStore.getState()
+  const trip = stash?.trip ?? st.trip
+  if (!trip) return
+  try {
+    localStorage.setItem(LS_TRIP, JSON.stringify({ ...trip, routeCache: st.routes }))
+    localStorage.setItem(LS_TRIP_AT, new Date().toISOString())
+  } catch {
+    /* 용량 초과 등은 무시 — 저장소 쪽이 기본 */
+  }
+}
+
+function readCachedTrip(): { trip: Trip; at: string } | null {
+  try {
+    const raw = localStorage.getItem(LS_TRIP)
+    if (!raw) return null
+    return { trip: JSON.parse(raw) as Trip, at: localStorage.getItem(LS_TRIP_AT) ?? '' }
+  } catch {
+    return null
+  }
+}
+
+/** 저장해 둔 일정을 보기 전용으로 보여주고, 연결되면 최신본으로 돌아간다 */
+function enterOffline(trip: Trip, at: string) {
+  useStore.setState({
+    trip,
+    routes: trip.routeCache ?? {},
+    ...viewFromHash(trip),
+    backendKind: backend?.kind,
+    saveStatus: 'offline',
+    offlineSince: at || new Date().toISOString(),
+    // 구글 지도와 경로도 인터넷이 필요하다. 저장된 키는 그대로 두고 화면에서만 끈다
+    apiKey: '',
+    googleStatus: 'none',
+  })
+  const retry = async () => {
+    try {
+      const remote = await backend?.latest()
+      if (!remote) return
+      clearInterval(timer)
+      window.removeEventListener('online', retry)
+      const st = useStore.getState()
+      const key = readKey()
+      lastSaved = remote.trip
+      useStore.setState({
+        trip: remote.trip,
+        routes: { ...st.routes, ...remote.routes },
+        selectedDayId: remote.trip.days.some((d) => d.id === st.selectedDayId) ? st.selectedDayId : remote.trip.days[0]?.id,
+        saveStatus: 'saved',
+        offlineSince: undefined,
+        apiKey: key,
+        googleStatus: key ? 'unknown' : 'none',
+        toast: { text: '다시 연결돼서 최신 일정을 불러왔어요', id: Date.now() },
+      })
+      cacheForOffline()
+      startSync()
+      void loadSharedKey()
+    } catch {
+      /* 아직 끊겨 있으면 다음 차례에 다시 */
+    }
+  }
+  const timer = setInterval(retry, 15000)
+  window.addEventListener('online', retry)
+}
+
+// ---------- 예전 버전 보기 ----------
+
+export const getRevisions = (): Revisions | undefined => backend?.revisions
+
+/** 지금 일정 (예전 버전을 보는 중이어도) */
+export const liveTrip = (): Trip | null => stash?.trip ?? useStore.getState().trip
+
+async function flushSave() {
+  clearTimeout(saveTimer)
+  saveTimer = undefined
+  if (tripDirty || routesDirty) await save()
+  while (saving) await new Promise((r) => setTimeout(r, 100))
+}
+
+export async function openPreview(trip: Trip, preview: Preview) {
+  await flushSave()
+  const st = useStore.getState()
+  if (!stash && st.trip) stash = { trip: st.trip, past: st.past, future: st.future }
+  useStore.setState({
+    trip,
+    routes: { ...st.routes, ...(trip.routeCache ?? {}) },
+    past: [],
+    future: [],
+    preview,
+    showVersions: false,
+    selectedDayId: trip.days.some((d) => d.id === st.selectedDayId) ? st.selectedDayId : trip.days[0]?.id,
+  })
+}
+
+export function closePreview() {
+  if (!stash) return
+  const { trip, past, future } = stash
+  stash = null
+  const st = useStore.getState()
+  useStore.setState({
+    trip,
+    past,
+    future,
+    preview: undefined,
+    selectedDayId: trip.days.some((d) => d.id === st.selectedDayId) ? st.selectedDayId : trip.days[0]?.id,
+  })
+}
+
+/** 보고 있는 버전을 지금 일정으로. 이전 일정은 변경 기록에 남고 되돌리기로도 돌아갈 수 있다 */
+export function applyPreview() {
+  const st = useStore.getState()
+  if (!stash || !st.trip || !st.preview) return
+  const next: Trip = { ...structuredClone(st.trip), updatedAt: new Date().toISOString() }
+  delete (next as Partial<Trip>).routeCache
+  const past = [...stash.past, stash.trip]
+  nextMessage = `이 버전으로 바꿈: ${st.preview.label}`
+  stash = null
+  useStore.setState({ trip: next, past, future: [], preview: undefined, toast: { text: `${st.preview.label}(으)로 바꿨어요`, id: Date.now() } })
+  scheduleSave(true)
+}
+
 function scheduleSave(tripChanged = false) {
+  if (useStore.getState().saveStatus === 'offline') return
   if (tripChanged) tripDirty = true
   else routesDirty = true
   if (useStore.getState().saveStatus !== 'local') useStore.setState({ saveStatus: 'dirty' })
@@ -252,30 +412,33 @@ export function serializeTrip(): string {
 
 async function save() {
   saveTimer = undefined
-  const { trip, routes } = useStore.getState()
+  const { routes } = useStore.getState()
+  const trip = liveTrip()
   if (!trip) return
   if (saving) {
     saveAgain = true
     return
   }
-  try {
-    localStorage.setItem(LS_TRIP, serializeTrip())
-  } catch {
-    /* 용량 초과 등은 무시 — 저장소 쪽이 기본 */
-  }
-  if (!backend || useStore.getState().saveStatus === 'local') return
+  cacheForOffline()
+  const status = useStore.getState().saveStatus
+  if (!backend || status === 'local' || status === 'offline') return
   saving = true
   const sent = { trip: tripDirty, routes: routesDirty }
   tripDirty = false
   routesDirty = false
   useStore.setState({ saveStatus: 'saving' })
   try {
-    const result = await backend.push({ trip, routes }, sent)
+    const message = sent.trip ? (nextMessage ?? changeSummary(lastSaved ? describeChanges(lastSaved, trip) : [])) : undefined
+    const result = await backend.push({ trip, routes }, sent, message)
     if (result === 'conflict') {
       tripDirty = tripDirty || sent.trip
       routesDirty = routesDirty || sent.routes
       await resolveConflict()
       return
+    }
+    if (sent.trip) {
+      lastSaved = trip
+      nextMessage = undefined
     }
     useStore.setState({ saveStatus: saveTimer || saveAgain ? 'dirty' : 'saved', savedAt: new Date().toISOString() })
   } catch {
@@ -295,8 +458,18 @@ async function save() {
 function applyRemote(remote: Snapshot) {
   const st = useStore.getState()
   const routes = { ...st.routes, ...remote.routes }
-  if (st.trip && remote.trip.updatedAt === st.trip.updatedAt) {
+  const current = stash?.trip ?? st.trip
+  lastSaved = remote.trip
+  if (current && remote.trip.updatedAt === current.updatedAt) {
     useStore.setState({ routes })
+    cacheForOffline()
+    return
+  }
+  if (stash) {
+    // 예전 버전을 보는 중이면 화면은 그대로 두고, 돌아갈 일정만 최신으로 바꾼다
+    stash = { trip: remote.trip, past: [], future: [] }
+    useStore.setState({ routes, toast: { text: '다른 기기에서 일정이 바뀌었어요. 지금 일정으로 돌아가면 보여요', id: Date.now() } })
+    cacheForOffline()
     return
   }
   useStore.setState({
@@ -307,6 +480,7 @@ function applyRemote(remote: Snapshot) {
     selectedDayId: remote.trip.days.some((d) => d.id === st.selectedDayId) ? st.selectedDayId : remote.trip.days[0]?.id,
     toast: { text: '다른 기기에서 바꾼 내용을 불러왔어요', id: Date.now() },
   })
+  cacheForOffline()
 }
 
 /** 저장하려는데 그사이 다른 기기가 먼저 저장한 경우 */

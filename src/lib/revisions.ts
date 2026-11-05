@@ -1,0 +1,131 @@
+import type { Day, Place, Trip } from '../types'
+import { shortName, type DayPlan } from './schedule'
+
+// 두 일정이 어떻게 다른지 사람이 읽을 수 있는 문장으로 만든다.
+// 저장할 때 변경 기록의 제목으로 쓰고, 예전 버전을 볼 때 지금과 비교하는 데도 쓴다.
+
+const nameOf = (t: Trip, id?: string) => (id && t.places[id] ? shortName(t.places[id].name) : '장소')
+
+// 구글에서 다시 받아오면 저절로 바뀌는 값은 수정으로 치지 않는다
+const AUTO_FIELDS: (keyof Place)[] = ['verifiedAt', 'rating', 'ratingCount', 'businessStatus', 'googleMapsUri', 'googleName', 'googlePlaceId', 'address', 'phone', 'website', 'hours', 'location', 'matchWarning']
+
+function placeSignature(p: Place): string {
+  const rest: Partial<Place> = { ...p }
+  for (const k of AUTO_FIELDS) delete rest[k]
+  return JSON.stringify(rest)
+}
+
+const stopSignature = (d: Day) => JSON.stringify(d.stops.map((s) => [s.placeId, s.stay, s.fixedTime, s.legMode, s.manualMinutes, s.meal]))
+
+export function describeChanges(from: Trip, to: Trip): string[] {
+  const out: string[] = []
+  if (from.title !== to.title) out.push('여행 제목 변경')
+  if (from.startDate !== to.startDate) out.push(`출발일을 ${to.startDate}로 변경`)
+  if (from.days.length !== to.days.length) out.push(`일정이 ${from.days.length}일에서 ${to.days.length}일로 변경`)
+
+  const label = (t: Trip, id: string) => `D${t.days.findIndex((d) => d.id === id) + 1}`
+  const fromDays = new Map(from.days.map((d) => [d.id, d]))
+
+  // 빠진 곳과 들어온 곳을 모아 두었다가, 같은 장소면 "옮김"으로 합친다
+  const removed: { dayId: string; placeId: string }[] = []
+  const added: { dayId: string; placeId: string }[] = []
+  for (const d of to.days) {
+    const old = fromDays.get(d.id)
+    if (!old) {
+      for (const s of d.stops) added.push({ dayId: d.id, placeId: s.placeId })
+      continue
+    }
+    const before = old.stops.map((s) => s.placeId)
+    const after = d.stops.map((s) => s.placeId)
+    for (const id of after) if (!before.includes(id)) added.push({ dayId: d.id, placeId: id })
+    for (const id of before) if (!after.includes(id)) removed.push({ dayId: d.id, placeId: id })
+  }
+
+  for (const r of removed) {
+    const i = added.findIndex((a) => a.placeId === r.placeId)
+    if (i >= 0) {
+      out.push(`${nameOf(to, r.placeId)}을(를) ${label(to, r.dayId)}에서 ${label(to, added[i].dayId)}로 옮김`)
+      added.splice(i, 1)
+    } else out.push(`${label(to, r.dayId)}에서 ${nameOf(from, r.placeId)} 뺌`)
+  }
+  for (const a of added) out.push(`${label(to, a.dayId)}에 ${nameOf(to, a.placeId)} 추가`)
+
+  for (const d of to.days) {
+    const old = fromDays.get(d.id)
+    if (!old) continue
+    const tag = label(to, d.id)
+    if (old.lodgingPlaceId !== d.lodgingPlaceId) out.push(d.lodgingPlaceId ? `${tag} 숙소를 ${nameOf(to, d.lodgingPlaceId)}(으)로 변경` : `${tag} 숙소 비움`)
+    if (old.startTime !== d.startTime) out.push(`${tag} 출발 ${d.startTime}으로 변경`)
+    if ((old.title ?? '') !== (d.title ?? '')) out.push(`${tag} 제목 변경`)
+    if ((old.note ?? '') !== (d.note ?? '')) out.push(`${tag} 메모 변경`)
+    const sameSet = old.stops.map((s) => s.placeId).sort().join() === d.stops.map((s) => s.placeId).sort().join()
+    if (sameSet && stopSignature(old) !== stopSignature(d)) {
+      const sameOrder = old.stops.every((s, i) => s.placeId === d.stops[i]?.placeId)
+      out.push(sameOrder ? `${tag} 시간·이동 수단 변경` : `${tag} 순서 변경`)
+    } else if (sameSet && old.stops.some((s, i) => (s.note ?? '') !== (d.stops[i]?.note ?? ''))) {
+      out.push(`${tag} 장소 메모 변경`)
+    }
+  }
+
+  for (const id of to.wishlist) if (!from.wishlist.includes(id)) out.push(`장소함에 ${nameOf(to, id)} 추가`)
+  for (const id of from.wishlist) if (!to.wishlist.includes(id)) out.push(`장소함에서 ${nameOf(from, id)} 뺌`)
+
+  for (const [id, p] of Object.entries(to.places)) {
+    const old = from.places[id]
+    if (old && placeSignature(old) !== placeSignature(p)) out.push(`${shortName(p.name)} 정보 수정`)
+  }
+  if (out.length === 0) {
+    const refreshed = Object.entries(to.places).some(([id, p]) => from.places[id] && from.places[id].verifiedAt !== p.verifiedAt)
+    if (refreshed) out.push('구글 영업정보 갱신')
+  }
+
+  if (JSON.stringify(from.checklist) !== JSON.stringify(to.checklist)) out.push('체크리스트 변경')
+  if (JSON.stringify(from.settings) !== JSON.stringify(to.settings)) out.push('설정 변경')
+  return out
+}
+
+/** 변경 기록에 남길 한 줄 */
+export function changeSummary(changes: string[]): string {
+  if (!changes.length) return '일정 저장'
+  const shown = changes.slice(0, 2).join(', ')
+  return changes.length > 2 ? `${shown} 외 ${changes.length - 2}건` : shown
+}
+
+/** 예전 기록은 자동 제목이 영어로 남아 있어 읽기 좋게 바꾼다 */
+export function historyLabel(message: string): string {
+  if (message === 'update trip.json') return '일정 저장'
+  if (message === 'add trip.json') return '처음 올린 일정'
+  return message
+}
+
+/** 일정 내용이 같은지 빠르게 비교하기 위한 값 */
+export function tripFingerprint(t: Trip): string {
+  const text = JSON.stringify(t.days.map((d) => [d.startTime, d.startPlaceId, d.lodgingPlaceId, d.stops.map((s) => [s.placeId, s.stay, s.fixedTime, s.legMode, s.manualMinutes, s.meal])]))
+  let h = 5381
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0
+  return h.toString(36)
+}
+
+export type VersionSummary = {
+  hotels: { name: string; nights: number }[]
+  driveMin: number
+  maxDriveMin: number
+  carFreeDays: number
+}
+
+export function summarizePlans(plans: DayPlan[]): VersionSummary {
+  const hotels: VersionSummary['hotels'] = []
+  for (const p of plans) {
+    if (!p.lodging) continue
+    const name = shortName(p.lodging.name)
+    const last = hotels[hotels.length - 1]
+    if (last?.name === name) last.nights++
+    else hotels.push({ name, nights: 1 })
+  }
+  return {
+    hotels,
+    driveMin: plans.reduce((sum, p) => sum + p.driveMin, 0),
+    maxDriveMin: Math.max(0, ...plans.map((p) => p.driveMin)),
+    carFreeDays: plans.filter((p) => p.stops.length > 0 && p.driveMin === 0).length,
+  }
+}

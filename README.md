@@ -46,6 +46,8 @@ npm start
   - 오프라인 모바일 일정표(HTML 한 장) — 장소마다 구글맵 길찾기 버튼, 렌터카 내비용 전화번호
   - 구글 My Maps용 KML(전체/일자별) — 폰 구글맵 앱 "저장됨 → 지도"에서 보기
   - 일자별 구글맵 경로 링크(경유지 포함)
+- **버전 기록**: 저장할 때마다 무엇이 바뀌었는지 기록에 남아요. 예전 시점을 그대로 열어 보고 되돌릴 수 있고, 이름을 붙여 버전으로 따로 보관할 수도 있어요 (`versions/` 폴더, 일정 저장소)
+- **인터넷이 끊겨도**: 마지막으로 받은 일정을 보기 전용으로 보여주고, 다시 연결되면 최신본으로 돌아가요. 지도 타일은 인터넷이 있어야 나와요
 - 되돌리기(⌘/Ctrl+Z), JSON 백업·불러오기
 
 ## 구조
@@ -58,6 +60,7 @@ src/
   lib/google.ts        Places API (New), Routes API
   lib/free.ts          무료 대체 (Photon 검색, Valhalla/OSRM 경로)
   lib/backend.ts       저장소 (맥 개발 서버 / 웹 버전 비공개 GitHub 저장소)
+  lib/revisions.ts     두 일정 비교, 변경 기록 문구, 버전 요약
   lib/optimize.ts      하루 순서 최적화
   lib/export.ts        구글맵 링크, KML, 모바일 일정표
   components/          화면

@@ -14,6 +14,7 @@ import { MapPanel } from './components/MapPanel'
 import { PlaceDrawer } from './components/PlaceDrawer'
 import { SettingsModal } from './components/SettingsModal'
 import { ExportModal } from './components/ExportModal'
+import { ReadOnlyBanner, VersionsModal } from './components/VersionsModal'
 import { Toast, cx } from './components/common'
 import { ConnectScreen } from './components/ConnectScreen'
 
@@ -113,6 +114,7 @@ function Planner() {
     >
     <div className="flex h-full flex-col overflow-hidden">
       <TopBar />
+      <ReadOnlyBanner />
       <DayChips plans={plans} />
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-60 shrink-0 border-r border-stone-200 xl:block">
@@ -138,6 +140,7 @@ function Planner() {
       <PlaceDrawer />
       <SettingsModal />
       <ExportModal />
+      <VersionsModal plans={plans} />
       <Toast />
       <HomeScreenHint />
     </div>

@@ -87,7 +87,7 @@ export function mealOf(stop: Stop, place: Place | undefined, arrive: number): Me
 
 export const MEAL_LABEL: Record<Meal, string> = { lunch: '🍱 점심', dinner: '🍽️ 저녁' }
 
-const shortName = (name: string) => name.replace(/\s*[(（].*?[)）]\s*/g, ' ').trim() || name
+export const shortName = (name: string) => name.replace(/\s*[(（].*?[)）]\s*/g, ' ').trim() || name
 
 const NOT_IN_TITLE: PlaceKind[] = ['hotel', 'airport', 'food', 'cafe']
 

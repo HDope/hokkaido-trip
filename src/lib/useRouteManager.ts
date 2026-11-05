@@ -80,7 +80,9 @@ function pump() {
 export function useRouteManager(plans: DayPlan[]) {
   const apiKey = useStore((s) => s.apiKey)
   const googleStatus = useStore((s) => s.googleStatus)
+  const offline = useStore((s) => !!s.offlineSince)
   useEffect(() => {
+    if (offline) return // 인터넷이 끊겼으면 저장된 경로만 쓴다
     for (const leg of neededLegs(plans)) {
       const r = leg.resolved
       const key = r.status === 'pending' ? r.key : r.status === 'ok' && r.stale ? r.key : undefined
@@ -90,5 +92,5 @@ export function useRouteManager(plans: DayPlan[]) {
       queue.push({ key, leg })
     }
     pump()
-  }, [plans, apiKey, googleStatus])
+  }, [plans, apiKey, googleStatus, offline])
 }
