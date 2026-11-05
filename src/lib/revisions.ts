@@ -93,9 +93,10 @@ export function changeSummary(changes: string[]): string {
 
 /** 예전 기록은 자동 제목이 영어로 남아 있어 읽기 좋게 바꾼다 */
 export function historyLabel(message: string): string {
-  if (message === 'update trip.json') return '일정 저장'
-  if (message === 'add trip.json') return '처음 올린 일정'
-  return message
+  const title = message.split('\n')[0]
+  if (title === 'update trip.json') return '일정 저장'
+  if (title === 'add trip.json') return '처음 올린 일정'
+  return title
 }
 
 /** 일정 내용이 같은지 빠르게 비교하기 위한 값 */
