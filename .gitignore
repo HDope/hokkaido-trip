@@ -1,0 +1,8 @@
+node_modules
+dist
+.env.local
+.DS_Store
+# 일정·구글 키는 비공개 저장소(gist)에만 둔다
+data/
+.claude/
+scripts/

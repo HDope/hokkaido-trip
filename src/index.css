@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: #f6f5f2;
+  color: #1d1c1a;
+  -webkit-font-smoothing: antialiased;
+}
+
+.leaflet-container {
+  font-family: inherit;
+  background: #e9e7e1;
+}
