@@ -17,8 +17,8 @@ export function AddToDayMenu({ getPlaceId, name, label = '＋ 날짜에 추가' 
           <MenuItem
             key={p.day.id}
             onClick={() => {
-              addPlaceToDay(p.index, getPlaceId())
-              notify(`${name} → D${p.index + 1}에 넣었어요`)
+              const where = addPlaceToDay(p.index, getPlaceId())
+              notify(`${name} → D${p.index + 1}${where ? `: ${where}` : '에 넣었어요'}`)
               close()
             }}
           >

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useStore } from '../store'
@@ -9,7 +9,7 @@ import { hoursForDay } from '../lib/hours'
 import { MODE_ICON, MODE_LABEL } from '../lib/routing'
 import { dayPoints, dayRouteUrls, directionsUrl } from '../lib/export'
 import { verifyAll } from '../lib/verify'
-import { optimizeDay, type OptimizeResult } from '../lib/optimize'
+import { optimizeDay, type OptimizeResult } from '../lib/placement'
 import { fmtDate, fmtDur, fmtHM, fmtKm } from '../lib/time'
 import { dayColor, KIND_ICON } from '../ui'
 import {
@@ -19,6 +19,7 @@ import {
   moveDay,
   moveStopToDay,
   removeStop,
+  reorderStops,
   updateDay,
   updateStop,
   upsertPlace,
@@ -35,16 +36,17 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
   const trip = useStore((s) => s.trip)!
   const notify = useStore((s) => s.notify)
   const openPlace = useStore((s) => s.openPlace)
-  const apiKey = useStore((s) => s.apiKey)
+  const routes = useStore((s) => s.routes)
   const google = useGoogle()
   const [verifying, setVerifying] = useState<string>()
-  const [optimizing, setOptimizing] = useState(false)
   const [proposal, setProposal] = useState<OptimizeResult>()
   const [insertAt, setInsertAt] = useState<number | null>(null)
   const [findLodging, setFindLodging] = useState(false)
   const routeUrls = plan.driveMin > 0 ? dayRouteUrls(dayPoints(plan)) : []
   const prevLodging = plan.index > 0 ? trip.days[plan.index - 1].lodgingPlaceId : undefined
   const isLastDay = plan.index === plans.length - 1
+  // 일정이 바뀌면 전에 계산한 제안은 맞지 않으니 치운다
+  useEffect(() => setProposal(undefined), [day.stops])
   const insertBox = (index: number) => (
     <div className="my-2 rounded-xl border border-violet-300 bg-violet-50/60 p-2.5">
       <PlaceSearch
@@ -66,18 +68,10 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
     </div>
   )
 
-  async function optimize() {
-    setOptimizing(true)
-    setProposal(undefined)
-    try {
-      const r = await optimizeDay(apiKey, plan)
-      if (r) setProposal(r)
-      else notify('지금 순서가 이미 가장 짧아요')
-    } catch (e) {
-      notify(`최적화 실패: ${(e as Error).message}`)
-    } finally {
-      setOptimizing(false)
-    }
+  function optimize() {
+    const r = optimizeDay(trip, routes, plan.index, google)
+    setProposal(r ?? undefined)
+    if (!r) notify('지금 순서보다 나은 순서를 찾지 못했어요')
   }
 
   async function verifyDay() {
@@ -177,26 +171,28 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
             </Btn>
           )}
         </div>
-        {google && day.stops.length >= 2 && (
+        {day.stops.length >= 2 && (
           <div className="mt-2">
-            <Btn onClick={optimize} disabled={optimizing} title="시각 고정·숙소·도보 구간은 그대로 두고 운전 순서만 줄여요">
-              {optimizing ? '계산 중…' : '🧭 이 날 순서 최적화'}
+            <Btn onClick={optimize} title="시각 고정과 호텔은 그 자리에 두고, 주차장에서 걷는 묶음, 식사 시간, 영업시간을 지키면서 동선을 다시 찾아요">
+              🧭 이 날 순서 최적화
             </Btn>
           </div>
         )}
         {proposal && (
           <div className="mt-2 rounded-xl border border-violet-300 bg-violet-50 p-3 text-sm">
-            <div className="font-semibold">운전이 약 {fmtDur(proposal.savedMinutes)} 줄어요</div>
+            <div className="font-semibold">
+              {[proposal.issuesFixed > 0 && `경고 ${proposal.issuesFixed}개가 사라져요`, proposal.driveSaved >= 1 && `운전이 약 ${fmtDur(proposal.driveSaved)} 줄어요`].filter(Boolean).join(' · ') || '동선이 더 자연스러워져요'}
+            </div>
             <div className="mt-0.5 text-[13px] text-stone-700">{proposal.names.join(' → ')}</div>
+            {proposal.shortened.length > 0 && <div className="mt-1 text-[12.5px] text-stone-600">시간이 모자라 체류를 줄여요: {proposal.shortened.map((s) => `${s.name} ${fmtDur(s.stay)}`).join(', ')}</div>}
             <div className="mt-2 flex gap-2">
               <Btn
                 variant="primary"
                 className="px-2.5 py-1 text-xs"
                 onClick={() => {
-                  const byId = new Map(day.stops.map((s) => [s.id, s]))
-                  updateDay(day.id, { stops: proposal.order.map((id) => byId.get(id)!) })
+                  updateDay(day.id, { stops: proposal.stops })
                   setProposal(undefined)
-                  notify('순서를 바꿨어요. 영업시간 경고가 생겼는지 확인하세요 (↶ 되돌리기)')
+                  notify('순서를 바꿨어요 (↶ 되돌리기)')
                 }}
               >
                 이 순서로 바꾸기
@@ -289,11 +285,12 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
         {findLodging && <LodgingFinder plan={plan} plans={plans} onClose={() => setFindLodging(false)} />}
 
         <div className="mt-5 rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-3">
-          <div className="mb-2 text-xs font-semibold text-violet-800">＋ 장소 추가 — 맨 뒤에 들어가요. 번호를 끌면 순서가 바뀌고, 왼쪽(위쪽) 날짜로 끌어다 놓으면 그날로 옮겨져요</div>
+          <div className="mb-2 text-xs font-semibold text-violet-800">＋ 장소 추가 — 그날 동선에서 가장 맞는 자리에 들어가요. 주차장에 세우고 걷는 구간 근처면 그 안에 걸어서 들어가요. 마음에 안 들면 ▲▼를 누르거나 카드를 끌어서 옮기고, 왼쪽(위쪽) 날짜로 끌어다 놓으면 그날로 옮겨져요</div>
           <PlaceSearch
             onPick={(p, existing) => {
               const id = existing ? p.id : upsertPlace(p)
-              addStop(day.id, id)
+              const where = addStop(day.id, id)
+              if (where) notify(`${p.name}: ${where}`)
             }}
           />
           <WishlistQuickAdd dayId={day.id} />
@@ -313,6 +310,7 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
 
 function WishlistQuickAdd({ dayId, index, onAdded }: { dayId: string; index?: number; onAdded?: () => void }) {
   const trip = useStore((s) => s.trip)!
+  const notify = useStore((s) => s.notify)
   const items = trip.wishlist.map((id) => trip.places[id]).filter((p) => p && p.kind !== 'hotel')
   if (!items.length) return null
   return (
@@ -323,7 +321,8 @@ function WishlistQuickAdd({ dayId, index, onAdded }: { dayId: string; index?: nu
           key={p.id}
           className="rounded-full border border-stone-200 bg-white px-2 py-0.5 text-xs hover:border-violet-300 hover:bg-violet-50"
           onClick={() => {
-            addStop(dayId, p.id, index)
+            const where = addStop(dayId, p.id, index)
+            if (where) notify(`${p.name}: ${where}`)
             onAdded?.()
           }}
         >
@@ -448,6 +447,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
         </div>
       )}
       <div
+        {...listeners}
         className={cx(
           'group cursor-pointer rounded-xl border bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,.04)] transition hover:border-violet-300',
           sp.warnings.some((w) => w.level === 'critical') ? 'border-red-300' : focused ? 'border-violet-400 ring-1 ring-violet-300' : 'border-stone-200',
@@ -461,14 +461,16 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
           <div className="flex flex-col items-center gap-1">
             <button
               {...attributes}
-              {...listeners}
+              data-drag-handle
               className="flex h-7 w-7 cursor-grab touch-none items-center justify-center rounded-full text-xs font-bold text-white active:cursor-grabbing"
               style={{ background: color }}
               title="끌어서 순서 바꾸기, 날짜 위에 놓으면 그날로 이동"
             >
               {index + 1}
             </button>
-            <span className="text-[10px] text-stone-300 opacity-0 group-hover:opacity-100">⠿</span>
+            <span data-drag-handle className="cursor-grab touch-none px-1 text-sm leading-none text-stone-300 group-hover:text-stone-500" title="끌어서 순서 바꾸기">
+              ⠿
+            </span>
           </div>
           <div className="w-12 shrink-0 pt-0.5 text-right tabular-nums">
             <div className="text-[15px] font-bold leading-tight">{fmtHM(sp.arrive)}</div>
@@ -553,6 +555,26 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
               />
             )}
             <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1 text-xs">
+              <span className="mr-auto flex items-center gap-0.5 text-stone-500">
+                <button
+                  className="rounded-md px-1.5 py-0.5 hover:bg-stone-100 disabled:opacity-30"
+                  disabled={index === 0}
+                  title="한 칸 앞으로"
+                  aria-label="한 칸 앞으로"
+                  onClick={() => reorderStops(day.id, index, index - 1)}
+                >
+                  ▲
+                </button>
+                <button
+                  className="rounded-md px-1.5 py-0.5 hover:bg-stone-100 disabled:opacity-30"
+                  disabled={index === day.stops.length - 1}
+                  title="한 칸 뒤로"
+                  aria-label="한 칸 뒤로"
+                  onClick={() => reorderStops(day.id, index, index + 1)}
+                >
+                  ▼
+                </button>
+              </span>
               {!showNote && !stop.note && (
                 <button className="rounded-md px-1.5 py-0.5 text-stone-500 hover:bg-stone-100" onClick={() => setShowNote(true)}>
                   메모
@@ -579,8 +601,8 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
                       <MenuItem
                         key={p.day.id}
                         onClick={() => {
-                          moveStopToDay(day.id, stop.id, p.day.id)
-                          notify(`${place.name} → D${p.index + 1}로 옮겼어요`)
+                          const where = moveStopToDay(day.id, stop.id, p.day.id)
+                          notify(`${place.name} → D${p.index + 1}${where ? `: ${where}` : '로 옮겼어요'} (↶ 되돌리기)`)
                           close()
                         }}
                       >

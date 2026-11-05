@@ -311,29 +311,6 @@ function tollOf(info?: { estimatedPrice?: { currencyCode?: string; units?: strin
 }
 
 /** 출발·도착을 고정하고 경유지 순서를 최적화 */
-export async function optimizeWaypoints(key: string, from: LatLng, to: LatLng, stops: LatLng[]): Promise<{ seconds: number; order: number[] }> {
-  type R = { routes?: { duration?: string; optimizedIntermediateWaypointIndex?: number[] }[] }
-  const ll = (p: LatLng) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } })
-  const r = await gfetch<R>(
-    ROUTES,
-    key,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        origin: ll(from),
-        destination: ll(to),
-        intermediates: stops.map(ll),
-        travelMode: 'DRIVE',
-        routingPreference: 'TRAFFIC_UNAWARE',
-        optimizeWaypointOrder: true,
-      }),
-    },
-    'routes.duration,routes.optimizedIntermediateWaypointIndex',
-  )
-  const route = r.routes?.[0]
-  if (!route?.duration) throw new GoogleApiError('경로를 찾지 못했어요')
-  return { seconds: parseInt(route.duration, 10), order: route.optimizedIntermediateWaypointIndex ?? stops.map((_, i) => i) }
-}
 
 /** 키가 제대로 동작하는지 API 별로 점검 */
 type TestResult = { api: string; ok: boolean; message: string; reason?: string }

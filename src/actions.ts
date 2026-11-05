@@ -1,9 +1,10 @@
-import { useStore } from './store'
+import { hasGoogle, useStore } from './store'
 import type { Day, Place, PlaceKind, Stop } from './types'
-import type { Fix } from './lib/schedule'
+import { shortName, type Fix } from './lib/schedule'
+import { bestPlacement, placeAt, removeWithRepair, reorderWithLegs, type Placement } from './lib/placement'
 import { candidateToPlace, findCandidatePlace, type Candidate } from './candidates'
 import { haversineMeters } from './lib/geo'
-import { uid } from './lib/time'
+import { fmtDur, uid } from './lib/time'
 
 const DEFAULT_STAY: Record<PlaceKind, number> = {
   sight: 60,
@@ -37,18 +38,32 @@ export function upsertPlace(p: Omit<Place, 'id'> & { id?: string }): string {
   return id
 }
 
-export function addStop(dayId: string, placeId: string, index?: number) {
-  const { trip, mutate } = useStore.getState()
+/** 자동으로 넣은 자리를 사람이 읽을 말로 */
+function placementText(p: Placement, stayBefore: number): string {
+  const where = p.afterName ? `${shortName(p.afterName)} 다음` : '맨 앞'
+  const how = p.mode === 'WALK' ? ', 걸어서' : p.mode === 'MANUAL' ? ', 택시로' : ''
+  const stay = p.stay < stayBefore ? `, 체류는 ${fmtDur(p.stay)}으로 줄였어요` : ''
+  return `${where}${how}${stay}`
+}
+
+/**
+ * 장소를 하루에 넣는다. index 를 주면 그 자리에, 안 주면 가장 맞는 자리를 찾아 넣고 어디에 넣었는지 돌려준다.
+ */
+export function addStop(dayId: string, placeId: string, index?: number): string | undefined {
+  const st = useStore.getState()
+  const { trip, routes, mutate } = st
   const place = trip?.places[placeId]
-  if (!place) return
+  const dayIndex = trip ? trip.days.findIndex((d) => d.id === dayId) : -1
+  if (!trip || !place || dayIndex < 0) return
+  const google = hasGoogle(st)
+  const stop: Stop = { id: uid(), placeId, stay: defaultStay(place) }
+  const placement = index == null ? bestPlacement(trip, routes, dayIndex, stop, google) : undefined
+  const stops = placement?.stops ?? placeAt(trip, routes, dayIndex, stop, index!, google)
   mutate((t) => {
-    const d = t.days.find((x) => x.id === dayId)
-    if (!d) return
-    const stop: Stop = { id: uid(), placeId, stay: defaultStay(place) }
-    if (index == null) d.stops.push(stop)
-    else d.stops.splice(index, 0, stop)
+    t.days[dayIndex].stops = stops
     t.wishlist = t.wishlist.filter((w) => w !== placeId)
   })
+  return placement && placementText(placement, stop.stay)
 }
 
 export function updateStop(dayId: string, stopId: string, patch: Partial<Stop>) {
@@ -70,23 +85,36 @@ export function removeStop(dayId: string, stopId: string, toWishlist = false) {
   })
 }
 
-export function moveStopToDay(fromDayId: string, stopId: string, toDayId: string) {
-  useStore.getState().mutate((t) => {
-    const from = t.days.find((x) => x.id === fromDayId)
-    const to = t.days.find((x) => x.id === toDayId)
-    const s = from?.stops.find((x) => x.id === stopId)
-    if (!from || !to || !s) return
-    from.stops = from.stops.filter((x) => x.id !== stopId)
-    to.stops.push(s)
+/** 다른 날로 옮긴다. 맨 뒤가 아니라 그날에서 가장 맞는 자리에 넣고, 어디에 넣었는지 돌려준다 */
+export function moveStopToDay(fromDayId: string, stopId: string, toDayId: string): string | undefined {
+  const st = useStore.getState()
+  const { trip, routes, mutate } = st
+  if (!trip) return
+  const a = trip.days.findIndex((d) => d.id === fromDayId)
+  const b = trip.days.findIndex((d) => d.id === toDayId)
+  const stop = trip.days[a]?.stops.find((s) => s.id === stopId)
+  if (a < 0 || b < 0 || !stop || a === b) return
+  const google = hasGoogle(st)
+  const placement = bestPlacement(trip, routes, b, stop, google)
+  const remaining = removeWithRepair(trip, routes, a, stopId, google)
+  mutate((t) => {
+    t.days[a].stops = remaining
+    t.days[b].stops = placement.stops
   })
+  return placementText(placement, stop.stay)
 }
 
+/** 같은 날 안에서 순서를 바꾼다. 옮긴 곳의 이동 수단은 새 자리에 맞춘다 */
 export function reorderStops(dayId: string, fromIndex: number, toIndex: number) {
-  useStore.getState().mutate((t) => {
-    const d = t.days.find((x) => x.id === dayId)
-    if (!d) return
-    const [s] = d.stops.splice(fromIndex, 1)
-    d.stops.splice(toIndex, 0, s)
+  const st = useStore.getState()
+  const { trip, routes, mutate } = st
+  if (!trip) return
+  const dayIndex = trip.days.findIndex((d) => d.id === dayId)
+  const count = trip.days[dayIndex]?.stops.length ?? 0
+  if (dayIndex < 0 || fromIndex === toIndex || toIndex < 0 || toIndex >= count) return
+  const stops = reorderWithLegs(trip, routes, dayIndex, fromIndex, toIndex, hasGoogle(st))
+  mutate((t) => {
+    t.days[dayIndex].stops = stops
   })
 }
 
@@ -203,13 +231,16 @@ export function applyLodging(dayIndex: number, placeId: string, nights = 1) {
   })
 }
 
-/** 장소를 하루에 넣는다. 숙소는 그날 밤 숙소로, 나머지는 방문지로 */
-export function addPlaceToDay(dayIndex: number, placeId: string) {
+/** 장소를 하루에 넣는다. 숙소는 그날 밤 숙소로, 나머지는 방문지로. 넣은 자리를 말로 돌려준다 */
+export function addPlaceToDay(dayIndex: number, placeId: string): string | undefined {
   const { trip } = useStore.getState()
   const day = trip?.days[dayIndex]
   if (!day) return
-  if (trip.places[placeId]?.kind === 'hotel') applyLodging(dayIndex, placeId, 1)
-  else addStop(day.id, placeId)
+  if (trip.places[placeId]?.kind === 'hotel') {
+    applyLodging(dayIndex, placeId, 1)
+    return '그날 밤 숙소'
+  }
+  return addStop(day.id, placeId)
 }
 
 export function applyFix(fix: Fix) {

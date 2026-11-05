@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { DndContext, DragOverlay, PointerSensor, closestCenter, pointerWithin, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
+import { DndContext, DragOverlay, PointerSensor, closestCenter, pointerWithin, useSensor, useSensors, type CollisionDetection, type DragEndEvent, type PointerSensorOptions } from '@dnd-kit/core'
 import { useStore } from './store'
 import { usePlans } from './hooks'
 import { useRouteManager } from './lib/useRouteManager'
@@ -33,6 +33,27 @@ export function App() {
 
 const DAY_TARGET = /^(?:day|chip):(.+)$/
 
+/**
+ * 마우스는 카드 어디를 잡아도 끌 수 있고(버튼·입력칸 제외),
+ * 터치는 스크롤과 겹치지 않게 번호 손잡이에서만 끈다
+ */
+class CardPointerSensor extends PointerSensor {
+  static activators = [
+    {
+      eventName: 'onPointerDown' as const,
+      handler: ({ nativeEvent: e }: React.PointerEvent, { onActivation }: PointerSensorOptions) => {
+        if (!e.isPrimary || e.button !== 0) return false
+        const el = e.target as HTMLElement
+        const onHandle = !!el.closest('[data-drag-handle]')
+        if (e.pointerType === 'touch' && !onHandle) return false
+        if (!onHandle && el.closest('button,input,textarea,select,a,label')) return false
+        onActivation?.({ event: e })
+        return true
+      },
+    },
+  ]
+}
+
 // 날짜 목록 위에 있으면 그날로 옮기기, 아니면 같은 날 안에서 순서 바꾸기
 const collision: CollisionDetection = (args) => {
   const overDay = pointerWithin(args).filter((c) => DAY_TARGET.test(String(c.id)))
@@ -59,7 +80,7 @@ function HomeScreenHint() {
 function Planner() {
   const plans = usePlans()
   useRouteManager(plans)
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const sensors = useSensors(useSensor(CardPointerSensor, { activationConstraint: { distance: 5 } }))
   const [dragId, setDragId] = useState<string>()
   const trip = useStore((s) => s.trip)!
   const notify = useStore((s) => s.notify)
@@ -74,9 +95,9 @@ function Planner() {
     const target = DAY_TARGET.exec(String(e.over.id))
     if (target) {
       if (target[1] === from.id) return
-      moveStopToDay(from.id, stopId, target[1])
+      const where = moveStopToDay(from.id, stopId, target[1])
       const index = trip.days.findIndex((d) => d.id === target[1])
-      notify(`D${index + 1}로 옮겼어요 (↶ 되돌리기)`)
+      notify(`D${index + 1}로 옮겼어요${where ? `: ${where}` : ''} (↶ 되돌리기)`)
       return
     }
     const a = from.stops.findIndex((s) => s.id === stopId)
@@ -129,7 +150,7 @@ function Planner() {
         >
           {view === 'overview' && <Overview plans={plans} />}
           {view === 'candidates' && <CandidatesView plans={plans} />}
-          {view === 'day' && plan && <DayView plan={plan} plans={plans} />}
+          {view === 'day' && plan && <DayView key={plan.day.id} plan={plan} plans={plans} />}
           {view === 'places' && <PlacesView plans={plans} />}
           {view === 'checklist' && <ChecklistView />}
           {view === 'compare' && <CompareView plans={plans} />}

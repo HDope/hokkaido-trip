@@ -18,7 +18,8 @@ const WALK_M_PER_MIN = 70
 export function roughMinutes(from: LatLng, to: LatLng, mode: LegMode): number {
   const m = haversineMeters(from, to)
   if (mode === 'WALK') return (m * 1.3) / WALK_M_PER_MIN
-  return ((m * 1.35) / 1000 / 50) * 60 // 우회 계수 1.35, 평균 50km/h
+  // 우회 계수 1.35, 평균 50km/h. 시내의 짧은 구간은 신호와 주차 진입이 있어 조금 더한다
+  return ((m * 1.35) / 1000 / 50) * 60 + (m >= 200 ? 3 : 0)
 }
 
 export function resolveLeg(
