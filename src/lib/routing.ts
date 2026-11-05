@@ -7,7 +7,7 @@ export function legKey(from: LatLng, to: LatLng, mode: LegMode, avoidTolls: bool
 }
 
 export type ResolvedLeg =
-  | { status: 'ok'; minutes: number; meters: number; provider: RouteLeg['provider']; polyline?: string; key?: string; stale?: boolean }
+  | { status: 'ok'; minutes: number; meters: number; provider: RouteLeg['provider']; polyline?: string; key?: string; stale?: boolean; tollYen?: number | null }
   | { status: 'pending'; key: string; estimate: number; meters: number }
   | { status: 'needsManual'; meters: number }
   | { status: 'error'; key: string; message: string; estimate: number; meters: number }
@@ -52,7 +52,9 @@ export function resolveLeg(
     provider: leg.provider,
     polyline: leg.polyline,
     key,
-    stale: hasGoogle && leg.provider !== 'google',
+    tollYen: leg.tollYen,
+    // 톨비를 받기 전에 저장된 운전 구간도 다시 받는다
+    stale: hasGoogle && (leg.provider !== 'google' || (mode === 'DRIVE' && leg.tollYen === undefined)),
   }
 }
 

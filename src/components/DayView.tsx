@@ -4,7 +4,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { useStore } from '../store'
 import { useGoogle } from '../hooks'
 import type { LegMode, MealMark } from '../types'
-import { MEAL_LABEL, type DayPlan, type LegPlan, type StopPlan } from '../lib/schedule'
+import { MEAL_LABEL, tollText, type DayPlan, type LegPlan, type StopPlan } from '../lib/schedule'
 import { hoursForDay } from '../lib/hours'
 import { MODE_ICON, MODE_LABEL } from '../lib/routing'
 import { dayPoints, dayRouteUrls, directionsUrl } from '../lib/export'
@@ -128,10 +128,10 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-stone-600">
           {plan.driveMin > 0 ? (
             <span>
-              🚗 운전 <b className="text-stone-900">{fmtDur(plan.driveMin)}</b> · {fmtKm(plan.driveMeters)}
+              🚗 운전 <b className="text-stone-900">{fmtDur(plan.driveMin)}</b> · {fmtKm(plan.driveMeters)} · <b className="text-stone-900">{tollText(plan.tollYen, plan.tollUnknown)}</b>
             </span>
           ) : (
-            plan.stops.length > 0 && <b className="text-stone-900">🚶 차 없는 날</b>
+            plan.stops.length > 0 && <b className="text-stone-900">🚶 운전 없는 날</b>
           )}
           <span>
             ⏱ {fmtHM(plan.start)} → <b className="text-stone-900">{fmtHM(plan.end)}</b>
@@ -400,6 +400,7 @@ function LegRow({ leg, onMode, onManual, manual, onInsert }: { leg: LegPlan; onM
           <span className="font-semibold text-stone-800 tabular-nums">{fmtDur(leg.minutes)}</span>
         )}
         {leg.meters > 0 && <span className="tabular-nums">· {fmtKm(leg.meters)}</span>}
+        {leg.tollYen ? <span className="rounded bg-sky-50 px-1 font-semibold text-sky-800 tabular-nums">톨 ¥{leg.tollYen.toLocaleString()}</span> : leg.tollYen === null ? <span className="text-stone-400">톨 요금 미확인</span> : null}
         {leg.buffer > 0 && <span className="text-stone-400">+여유 {leg.buffer}분</span>}
         <span className={cx('rounded px-1.5 py-px text-[10.5px] font-semibold', tag.c)}>{tag.t}</span>
         <ExtLink href={directionsUrl(leg.to, leg.from, leg.mode)} className="text-xs">

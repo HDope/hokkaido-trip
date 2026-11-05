@@ -212,6 +212,7 @@ export function CompareView({ plans }: { plans: DayPlan[] }) {
                 <tbody>
                   <SummaryRow label="총 운전" first={firstCol} cols={shown} value={(s) => fmtDur(s.driveMin)} />
                   <SummaryRow label="하루 최대 운전" first={firstCol} cols={shown} value={(s) => fmtDur(s.maxDriveMin)} />
+                  <SummaryRow label="예상 톨비" first={firstCol} cols={shown} value={(s) => (s.tollYen == null ? '–' : `¥${s.tollYen.toLocaleString()}${s.tollUnknown ? ` + 미확인 ${s.tollUnknown}구간` : ''}`)} />
                   <SummaryRow label="운전 없는 날" first={firstCol} cols={shown} value={(s) => `${s.carFreeDays}일`} />
                   {rows.map((sec) => (
                     <SectionRows key={sec.title} title={sec.title} items={sec.items} first={firstCol} span={shown.length} onOpen={(key) => {

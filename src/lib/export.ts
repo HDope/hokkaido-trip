@@ -1,7 +1,7 @@
 import type { LegMode, Place, Trip } from '../types'
 import { decodePolyline } from './geo'
 import { hoursForDay } from './hours'
-import { MEAL_LABEL, type DayPlan, type Warning } from './schedule'
+import { MEAL_LABEL, type DayPlan, type Warning, tollText } from './schedule'
 import { fmtDate, fmtDur, fmtHM, fmtKm } from './time'
 import { DAY_COLORS, KIND_ICON } from '../ui'
 
@@ -135,7 +135,7 @@ export function buildMobileHtml(trip: Trip, plans: DayPlan[]): string {
         .join('')
       const leg = (l: DayPlan['endLeg']) =>
         l
-          ? `<div class="leg">${{ DRIVE: '🚗', WALK: '🚶', TRANSIT: '🚆', MANUAL: '⏱️' }[l.mode]} ${fmtDur(l.minutes)}${l.meters ? ` · ${fmtKm(l.meters)}` : ''} <a href="${esc(directionsUrl(l.to, undefined, l.mode))}">길찾기 ›</a></div>`
+          ? `<div class="leg">${{ DRIVE: '🚗', WALK: '🚶', TRANSIT: '🚆', MANUAL: '⏱️' }[l.mode]} ${fmtDur(l.minutes)}${l.meters ? ` · ${fmtKm(l.meters)}` : ''}${l.tollYen ? ` · 톨 ¥${l.tollYen.toLocaleString()}` : ''} <a href="${esc(directionsUrl(l.to, undefined, l.mode))}">길찾기 ›</a></div>`
           : ''
       const stops = p.stops
         .filter((s) => s.place)
@@ -163,7 +163,7 @@ ${ws.map((w) => `<div class="warn">${LEVEL_ICON[w.level]} ${esc(w.text)}</div>`)
         : ''
       const dayWarn = p.warnings.filter((w) => w.level !== 'info').map((w) => `<div class="warn">${LEVEL_ICON[w.level]} ${esc(w.text)}</div>`).join('')
       return `<section id="d${p.index + 1}"><header style="border-color:${color}"><div class="dnum" style="background:${color}">D${p.index + 1}</div><div><h2>${fmtDate(p.date)} ${esc(p.title)}</h2>
-<div class="sum">출발 ${fmtHM(p.start)} · ${p.driveMin > 0 ? `운전 ${fmtDur(p.driveMin)} (${fmtKm(p.driveMeters)})` : '차 없는 날'} · 도착 ${fmtHM(p.end)}${p.sun ? ` · 🌅 ${fmtHM(p.sun.sunrise)} 🌇 ${fmtHM(p.sun.sunset)}` : ''}</div>${p.lunch || p.dinner ? `<div class="sum">${[p.lunch && `🍱 ${esc(p.lunch.place.name)}`, p.dinner && `🍽️ ${esc(p.dinner.place.name)}`].filter(Boolean).join(' · ')}</div>` : ''}</div></header>
+<div class="sum">출발 ${fmtHM(p.start)} · ${p.driveMin > 0 ? `운전 ${fmtDur(p.driveMin)} (${fmtKm(p.driveMeters)}) · ${tollText(p.tollYen, p.tollUnknown)}` : '운전 없는 날'} · 도착 ${fmtHM(p.end)}${p.sun ? ` · 🌅 ${fmtHM(p.sun.sunrise)} 🌇 ${fmtHM(p.sun.sunset)}` : ''}</div>${p.lunch || p.dinner ? `<div class="sum">${[p.lunch && `🍱 ${esc(p.lunch.place.name)}`, p.dinner && `🍽️ ${esc(p.dinner.place.name)}`].filter(Boolean).join(' · ')}</div>` : ''}</div></header>
 ${p.startPlace ? `<div class="start">출발: ${esc(p.startPlace.name)}</div>` : ''}${dayWarn}<div class="routes">${routes}</div>${stops}${lodging}
 ${p.day.note ? `<div class="note">📝 ${esc(p.day.note)}</div>` : ''}</section>`
     })

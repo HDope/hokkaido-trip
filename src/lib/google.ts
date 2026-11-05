@@ -269,8 +269,15 @@ export async function computeRoute(
   to: LatLng,
   mode: Exclude<LegMode, 'MANUAL'>,
   avoidTolls: boolean,
-): Promise<{ seconds: number; meters: number; polyline?: string }> {
-  type R = { routes?: { duration?: string; distanceMeters?: number; polyline?: { encodedPolyline?: string } }[] }
+): Promise<{ seconds: number; meters: number; polyline?: string; tollYen?: number | null }> {
+  type R = {
+    routes?: {
+      duration?: string
+      distanceMeters?: number
+      polyline?: { encodedPolyline?: string }
+      travelAdvisory?: { tollInfo?: { estimatedPrice?: { currencyCode?: string; units?: string }[] } }
+    }[]
+  }
   const ll = (p: LatLng) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } })
   const body: Record<string, unknown> = {
     origin: ll(from),
@@ -282,16 +289,25 @@ export async function computeRoute(
   if (mode === 'DRIVE') {
     // 교통량 반영(TRAFFIC_AWARE)은 Pro 요금 → 홋카이도 지방도로는 정체가 적어 기본값으로 충분
     body.routingPreference = 'TRAFFIC_UNAWARE'
-    body.routeModifiers = { avoidTolls }
+    body.extraComputations = ['TOLLS']
+    body.routeModifiers = { avoidTolls, vehicleInfo: { emissionType: 'GASOLINE' }, tollPasses: ['JP_ETC'] }
   }
-  const r = await gfetch<R>(ROUTES, key, { method: 'POST', body: JSON.stringify(body) }, 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline')
+  const r = await gfetch<R>(ROUTES, key, { method: 'POST', body: JSON.stringify(body) }, 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.travelAdvisory.tollInfo')
   const route = r.routes?.[0]
   if (!route?.duration) throw new GoogleApiError('경로를 찾지 못했어요')
   return {
     seconds: parseInt(route.duration, 10),
     meters: route.distanceMeters ?? 0,
     polyline: route.polyline?.encodedPolyline,
+    tollYen: mode === 'DRIVE' ? tollOf(route.travelAdvisory?.tollInfo) : undefined,
   }
+}
+
+/** tollInfo 가 없으면 톨게이트가 없는 길, 있는데 금액이 없으면 요금을 모르는 길이다 */
+function tollOf(info?: { estimatedPrice?: { currencyCode?: string; units?: string }[] }): number | null {
+  if (!info) return 0
+  const yen = info.estimatedPrice?.find((p) => p.currencyCode === 'JPY')
+  return yen?.units != null ? Number(yen.units) : null
 }
 
 /** 출발·도착을 고정하고 경유지 순서를 최적화 */

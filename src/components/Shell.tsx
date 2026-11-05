@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core'
 import { useStore } from '../store'
 import { useGoogle } from '../hooks'
-import { shortName, type DayPlan } from '../lib/schedule'
+import { shortName, tollText, type DayPlan } from '../lib/schedule'
 import { dayDate, fmtDate, fmtDur } from '../lib/time'
 import { dayColor, LEVEL_META } from '../ui'
 import { addDay } from '../actions'
@@ -154,7 +154,7 @@ function DayNavItem({ p, prevLodgingId, active, onClick }: { p: DayPlan; prevLod
       <div className="mt-1.5">
         <MiniDayBar p={p} />
       </div>
-      <div className="mt-1 text-[11px] text-stone-500">{p.driveMin > 0 ? `🚗 ${fmtDur(p.driveMin)}` : '🚶 차 없는 날'}</div>
+      <div className="mt-1 text-[11px] text-stone-500">{p.driveMin > 0 ? `🚗 ${fmtDur(p.driveMin)} · ${tollText(p.tollYen, p.tollUnknown)}` : '🚶 운전 없는 날'}</div>
       <div className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600">
         {p.lodging ? (
           <>

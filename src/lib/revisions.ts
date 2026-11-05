@@ -111,6 +111,8 @@ export type VersionSummary = {
   driveMin: number
   maxDriveMin: number
   carFreeDays: number
+  tollYen?: number
+  tollUnknown?: number
 }
 
 export function summarizePlans(plans: DayPlan[]): VersionSummary {
@@ -127,6 +129,8 @@ export function summarizePlans(plans: DayPlan[]): VersionSummary {
     driveMin: plans.reduce((sum, p) => sum + p.driveMin, 0),
     maxDriveMin: Math.max(0, ...plans.map((p) => p.driveMin)),
     carFreeDays: plans.filter((p) => p.stops.length > 0 && p.driveMin === 0).length,
+    tollYen: plans.reduce((sum, p) => sum + p.tollYen, 0),
+    tollUnknown: plans.reduce((sum, p) => sum + p.tollUnknown, 0),
   }
 }
 

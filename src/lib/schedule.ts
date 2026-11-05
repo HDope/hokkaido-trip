@@ -22,6 +22,7 @@ export type LegPlan = {
   minutes: number // 표시·계산에 쓰는 이동시간 (확정값 또는 추정치)
   buffer: number // 주차·도보 여유
   meters: number
+  tollYen?: number | null // 운전 구간의 예상 톨비
   start: number
   end: number
   confirmed: boolean
@@ -59,6 +60,8 @@ export type DayPlan = {
   end: number
   driveMin: number
   driveMeters: number
+  tollYen: number // 하루 예상 톨비 합계
+  tollUnknown: number // 톨비를 모르는 운전 구간 수
   stayMin: number
   waitMin: number
   sun?: { sunrise: number; sunset: number }
@@ -113,6 +116,12 @@ export function autoDayTitle(stops: StopPlan[], startPlace?: Place, lodging?: Pl
   return parts.join(' · ') + (names.length > shown.length ? ` 외 ${names.length - shown.length}곳` : '')
 }
 
+/** "톨 ¥3,020", "톨 없음", "톨비 미확인" 같은 짧은 표시 */
+export function tollText(yen: number, unknown: number): string {
+  if (yen > 0) return `톨 ¥${yen.toLocaleString()}${unknown ? ` + 미확인 ${unknown}구간` : ''}`
+  return unknown ? '톨비 미확인' : '톨 없음'
+}
+
 export function worstLevel(ws: Warning[]): Level | undefined {
   return LEVEL_ORDER.find((l) => ws.some((w) => w.level === l))
 }
@@ -134,6 +143,8 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
   let prev = startPlace
   let driveMin = 0
   let driveMeters = 0
+  let tollYen = 0
+  let tollUnknown = 0
   let stayMin = 0
   let waitMin = 0
   let pendingLegs = 0
@@ -146,6 +157,7 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
     const meters = resolved.meters
     // 바로 옆(400m 미만)은 차를 다시 대지 않으니 주차 여유를 붙이지 않는다
     const buffer = mode === 'DRIVE' && meters >= 400 ? s.parkingBuffer : 0
+    const legToll = mode === 'DRIVE' && resolved.status === 'ok' ? resolved.tollYen : undefined
     const warnings: Warning[] = []
     if (!confirmed) pendingLegs++
     if (resolved.status === 'needsManual') {
@@ -157,6 +169,8 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
     if (mode === 'DRIVE') {
       driveMin += minutes
       driveMeters += meters
+      if (legToll != null) tollYen += legToll
+      else if (meters > 0) tollUnknown++
       if (minutes >= 120) {
         warnings.push({ level: 'info', text: `${fmtDur(minutes)} 연속 운전 — 중간에 휴게소(SA·PA)나 미치노에키에서 쉬어가세요` })
       }
@@ -168,7 +182,7 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
         })
       }
     }
-    return { from, to, mode, resolved, minutes, buffer, meters, start: depart, end, confirmed, warnings }
+    return { from, to, mode, resolved, minutes, buffer, meters, tollYen: legToll, start: depart, end, confirmed, warnings }
   }
 
   const stops: StopPlan[] = day.stops.map((stop) => {
@@ -248,6 +262,8 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
     end,
     driveMin,
     driveMeters,
+    tollYen,
+    tollUnknown,
     stayMin,
     waitMin,
     sun,

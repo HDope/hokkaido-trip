@@ -95,6 +95,7 @@ export type RouteLeg = {
   seconds: number
   meters: number
   polyline?: string
+  tollYen?: number | null // 예상 톨비(엔). 0 톨게이트 없음, null 톨게이트는 있는데 요금을 모름, 없으면 아직 확인 안 함
   fetchedAt: string
   error?: string
 }

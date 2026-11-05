@@ -38,6 +38,8 @@ async function fetchLeg(leg: LegPlan, cached?: RouteLeg): Promise<RouteLeg> {
         // 이미 무료 경로로 계산해 둔 구간이면 그대로 쓰고, 없으면 아래에서 무료로 계산
         if (cached && !cached.error) return cached
       } else {
+        // 톨비만 새로 받다 실패하면 경로는 그대로 두고 톨비만 모른다고 표시한다
+        if (cached && !cached.error && cached.provider === 'google') return { ...cached, tollYen: null }
         return { provider: 'google', seconds: 0, meters: 0, fetchedAt: now, error: (e as Error).message }
       }
     }

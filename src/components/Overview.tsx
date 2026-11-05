@@ -1,5 +1,5 @@
 import { useStore } from '../store'
-import type { DayPlan } from '../lib/schedule'
+import { tollText, type DayPlan } from '../lib/schedule'
 import { fmtDate, fmtDur, fmtHM, fmtKm } from '../lib/time'
 import { dayColor, LEVEL_META } from '../ui'
 import { TripGantt } from './Timeline'
@@ -9,6 +9,8 @@ export function Overview({ plans }: { plans: DayPlan[] }) {
   const selectDay = useStore((s) => s.selectDay)
   const totalDrive = plans.reduce((a, p) => a + p.driveMin, 0)
   const totalKm = plans.reduce((a, p) => a + p.driveMeters, 0)
+  const totalToll = plans.reduce((a, p) => a + p.tollYen, 0)
+  const tollMissing = plans.reduce((a, p) => a + p.tollUnknown, 0)
   const counts = plans.reduce(
     (a, p) => ({ critical: a.critical + p.counts.critical, serious: a.serious + p.counts.serious, warning: a.warning + p.counts.warning }),
     { critical: 0, serious: 0, warning: 0 },
@@ -29,6 +31,7 @@ export function Overview({ plans }: { plans: DayPlan[] }) {
 
       <div className="mt-4 grid grid-cols-2 gap-2.5 2xl:grid-cols-4">
         <Stat label="총 운전" value={fmtDur(totalDrive)} sub={fmtKm(totalKm)} />
+        <Stat label="예상 톨비" value={`¥${totalToll.toLocaleString()}`} sub={tollMissing ? `미확인 ${tollMissing}구간 빼고` : '구글 추정, ETC 기준'} tone={tollMissing ? 'warn' : undefined} />
         <Stat label="가장 긴 날" value={fmtDur(longest?.driveMin ?? 0)} sub={longest ? `D${longest.index + 1}` : ''} />
         <Stat
           label="문제"
@@ -61,7 +64,7 @@ export function Overview({ plans }: { plans: DayPlan[] }) {
                   </span>
                   <span className="block truncate text-xs text-stone-500">{route.join(' → ') || '아직 비어 있어요'}</span>
                   <span className="mt-1 flex flex-wrap gap-x-3 text-xs text-stone-600">
-                    <span>{p.driveMin > 0 ? `🚗 ${fmtDur(p.driveMin)}` : '🚶 차 없는 날'}</span>
+                    <span>{p.driveMin > 0 ? `🚗 ${fmtDur(p.driveMin)} · ${tollText(p.tollYen, p.tollUnknown)}` : '🚶 운전 없는 날'}</span>
                     <span>
                       ⏱ {fmtHM(p.start)}–{fmtHM(p.end)}
                     </span>

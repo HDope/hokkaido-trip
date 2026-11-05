@@ -13,7 +13,7 @@ function SummaryLines({ s }: { s: VersionSummary }) {
     <div className="mt-1.5 space-y-0.5 text-[12.5px] text-stone-600">
       <div>🛏️ {s.hotels.map((h) => `${h.name} ${h.nights}박`).join(' · ')}</div>
       <div>
-        🚗 총 {fmtDur(s.driveMin)} · 하루 최대 {fmtDur(s.maxDriveMin)} · 차 없는 날 {s.carFreeDays}일
+        🚗 총 {fmtDur(s.driveMin)} · 하루 최대 {fmtDur(s.maxDriveMin)} · 운전 없는 날 {s.carFreeDays}일{s.tollYen != null && ` · 톨비 약 ¥${s.tollYen.toLocaleString()}`}
       </div>
     </div>
   )
