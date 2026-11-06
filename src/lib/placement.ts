@@ -21,6 +21,10 @@ const FAR_AFTER_DINNER_M = 3000
 /** 시간이 모자라면 체류를 이만큼까지 줄여 본다 */
 const SHORTER_STAYS = [60, 45, 30]
 const SHORTEN_COST_PER_MIN = 0.5
+/** 차를 세워 두고 다닐 때 택시로 갈 만한 거리(분) */
+const TAXI_MAX_MIN = 30
+/** 옮길 수 있는 묶음이 이 수 이하면 순서를 전부 바꿔 본다 (7이면 5,040가지) */
+const MAX_PERMUTE = 7
 
 const dist = (a: Place, b: Place) => haversineMeters(a.location, b.location)
 
@@ -56,8 +60,9 @@ function chooseLeg(ctx: Ctx, before: Stop[], after: Stop[], place: Place): Pick<
   if (d <= SIDE_BY_SIDE_M || (inWalkGroup && d <= WALK_GROUP_M)) return { legMode: 'WALK' }
   const car = carPlaceAfter(ctx, before)
   if (car && dist(car, prev) > CAR_LEFT_M) {
-    // 차를 세워 두고 다니는 중이면 택시로 움직인다
-    return { legMode: 'MANUAL', manualMinutes: Math.max(5, Math.round(roughMinutes(prev.location, place.location, 'DRIVE'))) }
+    // 차를 세워 두고 다니는 중이면 가까운 곳은 택시로 움직인다. 먼 곳은 택시가 아니라 차로 가야 한다
+    const taxi = roughMinutes(prev.location, place.location, 'DRIVE')
+    if (taxi <= TAXI_MAX_MIN) return { legMode: 'MANUAL', manualMinutes: Math.max(5, Math.round(taxi)) }
   }
   return {}
 }
@@ -184,7 +189,7 @@ function withMealMark(plan: DayPlan, stops: Stop[], stopId: string): Stop[] {
   return stops.map((s) => (s.id === stopId ? { ...s, meal: 'none' as const } : s))
 }
 
-export type Placement = { index: number; stops: Stop[]; mode: LegMode; afterName?: string; stay: number }
+export type Placement = { index: number; stops: Stop[]; mode: LegMode; afterName?: string; stay: number; addedDrive: number; addedCost: number }
 
 const stayOptions = (stay: number) => [stay, ...SHORTER_STAYS.filter((m) => m < stay)]
 
@@ -201,9 +206,35 @@ export function bestPlacement(trip: Trip, routes: Record<string, RouteLeg>, dayI
       if (!best || cost < best.cost) best = { index: i, stops, cost, plan, stay }
     }
   }
-  const { index, stops, plan, stay } = best!
+  const { index, stops, plan, stay, cost } = best!
   const placed = stops[index]
-  return { index, stops: withMealMark(plan, stops, stop.id), mode: placed.legMode ?? 'DRIVE', afterName: placeOf(ctx, rest[index - 1])?.name, stay }
+  const restPlan = planOf(ctx, rest)
+  return {
+    index,
+    stops: withMealMark(plan, stops, stop.id),
+    mode: placed.legMode ?? 'DRIVE',
+    afterName: placeOf(ctx, rest[index - 1])?.name,
+    stay,
+    addedDrive: plan.driveMin - restPlan.driveMin,
+    addedCost: cost - dayCost(restPlan),
+  }
+}
+
+/** 이 정도 넘게 운전이 늘면 그날 동선과 맞지 않는 곳으로 본다 */
+const FAR_FROM_DAY_MIN = 60
+
+/** 그날 동선과 너무 먼 곳이면, 더 맞는 다른 날을 찾는다. 경고와 저녁 뒤 이동까지 따져 덜 무리한 날 중에서 운전이 가장 조금 느는 날 */
+export function betterDay(trip: Trip, routes: Record<string, RouteLeg>, dayIndex: number, stop: Stop, placement: Placement, hasGoogle: boolean): { dayIndex: number; addedDrive: number } | undefined {
+  if (placement.addedDrive <= FAR_FROM_DAY_MIN) return
+  let best: { dayIndex: number; addedDrive: number; addedCost: number } | undefined
+  trip.days.forEach((_, i) => {
+    if (i === dayIndex) return
+    const p = bestPlacement(trip, routes, i, stop, hasGoogle)
+    // 전체적으로 덜 무리한 날 중에서 운전이 가장 조금 느는 날
+    if (p.addedDrive > placement.addedDrive - 30 || p.addedCost > placement.addedCost - 30) return
+    if (!best || p.addedDrive < best.addedDrive) best = { dayIndex: i, addedDrive: p.addedDrive, addedCost: p.addedCost }
+  })
+  return best && { dayIndex: best.dayIndex, addedDrive: best.addedDrive }
 }
 
 /** 사용자가 직접 정한 자리에 넣는다 */
@@ -227,7 +258,29 @@ export function removeWithRepair(trip: Trip, routes: Record<string, RouteLeg>, d
   return repairLegs(ctx, trip.days[dayIndex].stops.filter((s) => s.id !== stopId))
 }
 
-export type OptimizeResult = { stops: Stop[]; names: string[]; driveSaved: number; issuesFixed: number; shortened: { name: string; stay: number }[] }
+export type OptimizeResult = {
+  stops: Stop[]
+  names: string[]
+  driveSaved: number
+  issuesFixed: number
+  taxiSaved: number
+  walkMore: number
+  shortened: { name: string; stay: number }[]
+}
+
+const legsOfPlan = (p: DayPlan) => [...p.stops.map((s) => s.leg), p.endLeg].filter((l) => !!l)
+const taxiCount = (p: DayPlan) => legsOfPlan(p).filter((l) => l.mode === 'MANUAL' || l.mode === 'TRANSIT').length
+const walkMinutes = (p: DayPlan) => legsOfPlan(p).reduce((sum, l) => sum + (l.mode === 'WALK' ? l.minutes : 0), 0)
+
+function* permutations<T>(items: T[]): Generator<T[]> {
+  if (items.length <= 1) {
+    yield items
+    return
+  }
+  for (let i = 0; i < items.length; i++) {
+    for (const rest of permutations([...items.slice(0, i), ...items.slice(i + 1)])) yield [items[i], ...rest]
+  }
+}
 
 /** 주차장에서 걷는 묶음: 차로 도착한 곳 + 이어서 걷거나 택시로 가는 곳들 */
 function groupsOf(stops: Stop[]): Stop[][] {
@@ -254,13 +307,44 @@ export function optimizeDay(trip: Trip, routes: Record<string, RouteLeg>, dayInd
   }
 
   // 자리를 많이 바꿀수록 조금씩 손해로 쳐서, 아주 작은 이득으로 일정을 흔들지 않는다
-  const movedCost = (stops: Stop[]) => stops.reduce((sum, st, i) => sum + (original[i]?.id === st.id ? 0 : 2), 0)
+  const movedCost = (stops: Stop[]) => stops.reduce((sum, st, i) => sum + (original[i]?.id === st.id ? 0 : 1), 0)
   const shortenCost = (stops: Stop[]) => stops.reduce((sum, st) => sum + Math.max(0, (original.find((o) => o.id === st.id)?.stay ?? st.stay) - st.stay) * (placeOf(ctx, st)?.kind === 'hotel' ? 0 : SHORTEN_COST_PER_MIN), 0)
   const costOf = (stops: Stop[]) => dayCost(planOf(ctx, stops)) + movedCost(stops) + shortenCost(stops)
 
   let cur = original
   let curCost = costOf(cur)
   const startCost = curCost
+  const movableGroup = (g: Stop[]) => !!placeOf(ctx, g[0]) && !g.some((s) => s.fixedTime || placeOf(ctx, s)?.kind === 'hotel' || placeOf(ctx, s)?.kind === 'airport')
+
+  // 1) 옮길 묶음이 적으면 순서를 전부 바꿔 본다. 여러 곳을 한꺼번에 바꿔야 줄어드는 경우를 찾는다
+  {
+    const groups = groupsOf(cur)
+    const free = groups.map((g, k) => ({ g, k })).filter(({ g }) => movableGroup(g))
+    if (free.length >= 2 && free.length <= MAX_PERMUTE) {
+      const prevOf = new Map(groups.map((g, k) => [g[0].id, groups[k - 1]?.at(-1)?.id]))
+      let best: { stops: Stop[]; cost: number } | undefined
+      for (const order of permutations(free.map((f) => f.g))) {
+        const seq = groups.slice()
+        free.forEach((f, j) => (seq[f.k] = order[j]))
+        let out: Stop[] = []
+        for (const g of seq) {
+          // 앞에 오는 곳이 바뀐 묶음만 이동 수단을 다시 정한다
+          const place = placeOf(ctx, g[0])!
+          const head = prevOf.get(g[0].id) === out.at(-1)?.id ? g[0] : setLeg(g[0], chooseLeg(ctx, out, g, place))
+          out = [...out, head, ...g.slice(1)]
+        }
+        const tight = tightenHotelRest(ctx, repairLegs(ctx, out))
+        const cost = costOf(tight)
+        if (cost < (best?.cost ?? curCost) - 1) best = { stops: tight, cost }
+      }
+      if (best) {
+        cur = best.stops
+        curCost = best.cost
+      }
+    }
+  }
+
+  // 2) 한 곳씩, 또는 묶음째 옮겨 보며 더 줄인다
   for (let pass = 0; pass < 6; pass++) {
     let best: { stops: Stop[]; cost: number } | undefined
     const consider = (stops: Stop[]) => {
@@ -286,7 +370,7 @@ export function optimizeDay(trip: Trip, routes: Record<string, RouteLeg>, dayInd
     const groups = groupsOf(cur)
     groups.forEach((group, g) => {
       const place = placeOf(ctx, group[0])
-      if (group.some((s) => s.fixedTime || placeOf(ctx, s)?.kind === 'hotel' || placeOf(ctx, s)?.kind === 'airport') || !place) return
+      if (!movableGroup(group) || !place) return
       const others = groups.filter((_, k) => k !== g)
       for (let k = 0; k <= others.length; k++) {
         if (k === g) continue
@@ -309,13 +393,17 @@ export function optimizeDay(trip: Trip, routes: Record<string, RouteLeg>, dayInd
   const issues = (p: DayPlan) => p.counts.critical + p.counts.serious + p.counts.warning
   const severe = (p: DayPlan) => p.counts.critical + p.counts.serious
   const issuesFixed = issues(before) - issues(after)
-  // 경고가 줄지 않으면 이득이 분명할 때만 제안한다
-  if (severe(after) > severe(before) || (issuesFixed <= 0 && curCost > startCost - 15)) return null
+  const driveSaved = before.driveMin - after.driveMin
+  // 경고가 줄거나, 운전이 10분 이상 줄거나, 전체적으로 분명히 나아질 때만 제안한다
+  const worthIt = issuesFixed > 0 || (driveSaved >= 10 && curCost < startCost) || curCost <= startCost - 15
+  if (severe(after) > severe(before) || !worthIt) return null
   return {
     stops: cur,
     names: cur.map((s) => placeOf(ctx, s)?.name ?? ''),
-    driveSaved: before.driveMin - after.driveMin,
+    driveSaved,
     issuesFixed,
+    taxiSaved: taxiCount(before) - taxiCount(after),
+    walkMore: walkMinutes(after) - walkMinutes(before),
     shortened: cur
       .filter((s) => placeOf(ctx, s)?.kind !== 'hotel' && s.stay < (original.find((o) => o.id === s.id)?.stay ?? s.stay))
       .map((s) => ({ name: placeOf(ctx, s)?.name ?? '', stay: s.stay })),

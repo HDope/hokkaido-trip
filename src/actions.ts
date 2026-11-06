@@ -1,7 +1,7 @@
 import { hasGoogle, useStore } from './store'
 import type { Day, Place, PlaceKind, Stop } from './types'
 import { shortName, type Fix } from './lib/schedule'
-import { bestPlacement, placeAt, removeWithRepair, reorderWithLegs, type Placement } from './lib/placement'
+import { bestPlacement, betterDay, placeAt, removeWithRepair, reorderWithLegs, type Placement } from './lib/placement'
 import { candidateToPlace, findCandidatePlace, type Candidate } from './candidates'
 import { haversineMeters } from './lib/geo'
 import { fmtDur, uid } from './lib/time'
@@ -38,12 +38,15 @@ export function upsertPlace(p: Omit<Place, 'id'> & { id?: string }): string {
   return id
 }
 
-/** 자동으로 넣은 자리를 사람이 읽을 말로 */
-function placementText(p: Placement, stayBefore: number): string {
+/** 자동으로 넣은 자리를 사람이 읽을 말로. 그날 동선과 멀면 더 맞는 날도 알려준다 */
+function placementText(p: Placement, stayBefore: number, better?: { dayIndex: number; addedDrive: number }): string {
   const where = p.afterName ? `${shortName(p.afterName)} 다음` : '맨 앞'
   const how = p.mode === 'WALK' ? ', 걸어서' : p.mode === 'MANUAL' ? ', 택시로' : ''
   const stay = p.stay < stayBefore ? `, 체류는 ${fmtDur(p.stay)}으로 줄였어요` : ''
-  return `${where}${how}${stay}`
+  const far = better
+    ? `. 이 날 동선에서 멀어 운전이 ${fmtDur(p.addedDrive)} 늘어요. D${better.dayIndex + 1}에 넣으면 ${better.addedDrive >= 1 ? `${fmtDur(better.addedDrive)}만 늘어요` : '거의 늘지 않아요'}`
+    : ''
+  return `${where}${how}${stay}${far}`
 }
 
 /**
@@ -63,7 +66,7 @@ export function addStop(dayId: string, placeId: string, index?: number): string 
     t.days[dayIndex].stops = stops
     t.wishlist = t.wishlist.filter((w) => w !== placeId)
   })
-  return placement && placementText(placement, stop.stay)
+  return placement && placementText(placement, stop.stay, betterDay(trip, routes, dayIndex, stop, placement, google))
 }
 
 export function updateStop(dayId: string, stopId: string, patch: Partial<Stop>) {
@@ -101,7 +104,9 @@ export function moveStopToDay(fromDayId: string, stopId: string, toDayId: string
     t.days[a].stops = remaining
     t.days[b].stops = placement.stops
   })
-  return placementText(placement, stop.stay)
+  // 원래 날을 뺀 상태에서 더 맞는 날을 찾는다 (원래 날이 가장 맞으면 그날을 알려준다)
+  const without = { ...trip, days: trip.days.map((d, i) => (i === a ? { ...d, stops: remaining } : d)) }
+  return placementText(placement, stop.stay, betterDay(without, routes, b, stop, placement, google))
 }
 
 /** 같은 날 안에서 순서를 바꾼다. 옮긴 곳의 이동 수단은 새 자리에 맞춘다 */

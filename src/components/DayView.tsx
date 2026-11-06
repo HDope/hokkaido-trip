@@ -181,7 +181,14 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
         {proposal && (
           <div className="mt-2 rounded-xl border border-violet-300 bg-violet-50 p-3 text-sm">
             <div className="font-semibold">
-              {[proposal.issuesFixed > 0 && `경고 ${proposal.issuesFixed}개가 사라져요`, proposal.driveSaved >= 1 && `운전이 약 ${fmtDur(proposal.driveSaved)} 줄어요`].filter(Boolean).join(' · ') || '동선이 더 자연스러워져요'}
+              {[
+                proposal.issuesFixed > 0 && `경고 ${proposal.issuesFixed}개가 사라져요`,
+                proposal.driveSaved >= 1 && `운전이 약 ${fmtDur(proposal.driveSaved)} 줄어요`,
+                proposal.taxiSaved > 0 && `택시를 ${proposal.taxiSaved}번 덜 타요`,
+                Math.abs(proposal.walkMore) >= 3 && `걷기가 ${fmtDur(Math.abs(proposal.walkMore))} ${proposal.walkMore > 0 ? '늘어요' : '줄어요'}`,
+              ]
+                .filter(Boolean)
+                .join(' · ') || '동선이 더 자연스러워져요'}
             </div>
             <div className="mt-0.5 text-[13px] text-stone-700">{proposal.names.join(' → ')}</div>
             {proposal.shortened.length > 0 && <div className="mt-1 text-[12.5px] text-stone-600">시간이 모자라 체류를 줄여요: {proposal.shortened.map((s) => `${s.name} ${fmtDur(s.stay)}`).join(', ')}</div>}
