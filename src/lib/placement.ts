@@ -1,4 +1,4 @@
-import type { LegMode, Place, RouteLeg, Stop, Trip } from '../types'
+import type { Day, LegMode, Place, RouteLeg, Stop, StopAlt, Trip } from '../types'
 import { haversineMeters } from './geo'
 import { roughMinutes } from './routing'
 import { computeDay, startPlaceIdFor, type DayPlan } from './schedule'
@@ -256,6 +256,58 @@ export function reorderWithLegs(trip: Trip, routes: Record<string, RouteLeg>, da
 export function removeWithRepair(trip: Trip, routes: Record<string, RouteLeg>, dayIndex: number, stopId: string, hasGoogle: boolean): Stop[] {
   const ctx: Ctx = { trip, routes, dayIndex, hasGoogle }
   return repairLegs(ctx, trip.days[dayIndex].stops.filter((s) => s.id !== stopId))
+}
+
+const clean = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && !(Array.isArray(v) && v.length === 0))) as T
+
+/**
+ * 후보를 1순위로 올린다. 지금 장소는 후보로 내려가고, 오가는 이동 수단은 새 장소에 맞춘다.
+ * 걸어가던 자리면 걸을 만한 거리일 때 그대로 걷고, 택시로 가던 자리면 택시로 간다.
+ */
+export function swapInAlt(trip: Trip, routes: Record<string, RouteLeg>, dayIndex: number, stopId: string, altId: string, hasGoogle: boolean): Pick<Day, 'stops' | 'endLegMode'> | undefined {
+  const ctx: Ctx = { trip, routes, dayIndex, hasGoogle }
+  const day = trip.days[dayIndex]
+  const i = day.stops.findIndex((s) => s.id === stopId)
+  const s = day.stops[i]
+  const alt = s?.alts?.find((a) => a.id === altId)
+  const place = alt && trip.places[alt.placeId]
+  if (!s || !alt || !place) return
+  const demoted: StopAlt = clean({ id: alt.id, placeId: s.placeId, stay: s.stay, note: s.note, picks: s.picks })
+  const promoted: Stop = clean({ ...s, placeId: alt.placeId, stay: alt.stay ?? s.stay, note: alt.note, picks: alt.picks, alts: s.alts!.map((a) => (a.id === altId ? demoted : a)) })
+
+  const before = day.stops.slice(0, i)
+  const after = day.stops.slice(i + 1)
+  const prev = placeOf(ctx, before.at(-1)) ?? startOf(ctx)
+  const mode = s.legMode ?? 'DRIVE'
+  let leg: Pick<Stop, 'legMode' | 'manualMinutes'> = { legMode: s.legMode, manualMinutes: s.manualMinutes }
+  if (prev) {
+    const d = dist(prev, place)
+    if (mode === 'WALK' && d > WALK_TOO_FAR_M) leg = chooseLeg(ctx, before, after, place)
+    else if (mode === 'DRIVE' && d <= SIDE_BY_SIDE_M) leg = { legMode: 'WALK' }
+    else if (mode === 'MANUAL') leg = { legMode: 'MANUAL', manualMinutes: Math.max(s.manualMinutes ?? 0, Math.round(roughMinutes(prev.location, place.location, 'DRIVE'))) }
+  }
+  const stops = repairLegs(ctx, [...before, setLeg(promoted, leg), ...after])
+
+  // 마지막 곳이 바뀌어 숙소까지 걸어가기 먼 거리가 되면 차로 돌아간다
+  let endLegMode = day.endLegMode
+  const lodging = day.lodgingPlaceId ? trip.places[day.lodgingPlaceId] : undefined
+  if (i === day.stops.length - 1 && endLegMode === 'WALK' && lodging && dist(place, lodging) > WALK_TOO_FAR_M) endLegMode = undefined
+  return { stops, endLegMode }
+}
+
+export type AltPreview = { stop: DayPlan['stops'][number]; driveDelta: number; endDelta: number; newIssues: number }
+
+/** 이 후보로 바꾸면 그날이 어떻게 되는지 미리 계산한다 */
+export function altPreview(trip: Trip, routes: Record<string, RouteLeg>, dayIndex: number, stopId: string, altId: string, hasGoogle: boolean): AltPreview | undefined {
+  const swap = swapInAlt(trip, routes, dayIndex, stopId, altId, hasGoogle)
+  if (!swap) return
+  const days = trip.days.slice()
+  days[dayIndex] = { ...days[dayIndex], ...swap }
+  const plan = computeDay({ ...trip, days }, routes, dayIndex, hasGoogle)
+  const base = computeDay(trip, routes, dayIndex, hasGoogle)
+  const issues = (p: DayPlan) => p.counts.critical + p.counts.serious + p.counts.warning
+  const i = swap.stops.findIndex((s) => s.id === stopId)
+  return { stop: plan.stops[i], driveDelta: plan.driveMin - base.driveMin, endDelta: plan.end - base.end, newIssues: issues(plan) - issues(base) }
 }
 
 export type OptimizeResult = {

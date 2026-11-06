@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useStore } from '../store'
@@ -20,6 +20,7 @@ import {
   moveStopToDay,
   removeStop,
   reorderStops,
+  togglePick,
   updateDay,
   updateStop,
   upsertPlace,
@@ -28,6 +29,8 @@ import { Btn, cx, ExtLink, InlineText, Menu, MenuItem, TimeInput, WarningList, i
 import { ParkingChip } from './ParkingInfo'
 import { LodgingFinder } from './LodgingFinder'
 import { PlaceSearch } from './PlaceSearch'
+import { AltActions, AltAddBox, AltNav, AltSlide, PickButtons } from './StopAlts'
+import { altPreview } from '../lib/placement'
 import { MiniDayBar } from './Timeline'
 
 export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
@@ -432,6 +435,31 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
   const notify = useStore((s) => s.notify)
   const [showNote, setShowNote] = useState(!!stop.note)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stop.id })
+  // 후보: 카드를 옆으로 넘기면 차례로 나온다 (0번은 지금 일정)
+  const trip = useStore((s) => s.trip)!
+  const routes = useStore((s) => s.routes)
+  const google = useGoogle()
+  const alts = useMemo(() => stop.alts ?? [], [stop.alts])
+  const [active, setActive] = useState(0)
+  const [adding, setAdding] = useState(false)
+  const scroller = useRef<HTMLDivElement>(null)
+  const previews = useMemo(() => alts.map((a) => altPreview(trip, routes, plan.index, stop.id, a.id, google)), [trip, routes, plan.index, stop.id, google, alts])
+  const go = (i: number) => {
+    const el = scroller.current
+    if (!el) return
+    const n = Math.max(0, Math.min(el.children.length - 1, i))
+    el.scrollTo({ left: n * el.clientWidth, behavior: 'smooth' })
+    setActive(n)
+  }
+  const activeAlt = active > 0 ? alts[active - 1] : undefined
+  // 후보가 줄어 보던 칸이 없어지면 앞으로 당긴다
+  useEffect(() => {
+    if (active > alts.length) setActive(alts.length)
+  }, [active, alts.length])
+  // 넓은 화면에서는 보고 있는 후보로 지도를 옮긴다
+  useEffect(() => {
+    if (activeAlt && isWideScreen()) focusPlace(activeAlt.placeId)
+  }, [activeAlt?.placeId, focusPlace])
   if (!place) return null
   const style = { transform: CSS.Transform.toString(transform), transition }
   const verified = place.verifiedAt ? new Date(place.verifiedAt) : undefined
@@ -461,7 +489,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
         )}
         onClick={(e) => {
           // 버튼·입력칸을 누를 때는 지도를 옮기지 않는다
-          if (!(e.target as HTMLElement).closest('button,input,textarea,select,a')) focusPlace(place.id)
+          if (!(e.target as HTMLElement).closest('button,input,textarea,select,a')) focusPlace(activeAlt?.placeId ?? place.id)
         }}
       >
         <div className="flex gap-3">
@@ -479,6 +507,18 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
               ⠿
             </span>
           </div>
+          <div className="min-w-0 flex-1">
+          {alts.length > 0 && <AltNav count={alts.length + 1} active={active} onGo={go} picksOf={(i) => (i === 0 ? stop.picks : alts[i - 1]?.picks)?.length ?? 0} />}
+          <div
+            ref={scroller}
+            className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
+            onScroll={(e) => {
+              const el = e.currentTarget
+              const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth))
+              if (i !== active) setActive(i)
+            }}
+          >
+          <div className="flex w-full shrink-0 snap-start gap-3">
           <div className="w-12 shrink-0 pt-0.5 text-right tabular-nums">
             <div className="text-[15px] font-bold leading-tight">{fmtHM(sp.arrive)}</div>
             {stop.stay > 0 && <div className="text-xs text-stone-400">{fmtHM(sp.depart)}</div>}
@@ -561,6 +601,23 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
                 onChange={(e) => updateStop(day.id, stop.id, { note: e.target.value || undefined })}
               />
             )}
+          </div>
+          </div>
+          {alts.map((a, k) => (
+            <div key={a.id} className="w-full shrink-0 snap-start">
+              <AltSlide dayId={day.id} stopId={stop.id} alt={a} preview={previews[k]} weekday={plan.weekday} />
+            </div>
+          ))}
+          </div>
+          {activeAlt ? (
+            <AltActions dayId={day.id} stopId={stop.id} alt={activeAlt} onPromoted={() => go(0)} />
+          ) : (
+            <>
+            {alts.length > 0 && (
+              <div className="mt-1.5">
+                <PickButtons picks={stop.picks} onToggle={(id) => togglePick(day.id, stop.id, undefined, id)} />
+              </div>
+            )}
             <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1 text-xs">
               <span className="mr-auto flex items-center gap-0.5 text-stone-500">
                 <button
@@ -582,6 +639,9 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
                   ▼
                 </button>
               </span>
+              <button className="rounded-md px-1.5 py-0.5 font-semibold text-amber-700 hover:bg-amber-50" title="이 자리에 갈 다른 후보를 넣어 두고 둘이 픽해요" onClick={() => setAdding(!adding)}>
+                ＋ 후보
+              </button>
               {!showNote && !stop.note && (
                 <button className="rounded-md px-1.5 py-0.5 text-stone-500 hover:bg-stone-100" onClick={() => setShowNote(true)}>
                   메모
@@ -632,9 +692,22 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
                 )}
               </Menu>
             </div>
+            </>
+          )}
           </div>
         </div>
       </div>
+      {adding && (
+        <AltAddBox
+          dayId={day.id}
+          stop={stop}
+          place={place}
+          arrive={sp.arrive}
+          weekday={plan.weekday}
+          onClose={() => setAdding(false)}
+          onAdded={() => setTimeout(() => go(alts.length + 1), 60)}
+        />
+      )}
     </div>
   )
 }

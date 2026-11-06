@@ -6,6 +6,7 @@ import { readCloudConfig, shareLink } from '../lib/backend'
 import { testKey } from '../lib/google'
 import { download } from '../lib/export'
 import { createSeedTrip } from '../seed'
+import { travelersOf } from '../lib/people'
 import { Btn, cx, ExtLink, Modal } from './common'
 
 const WEB_URL = 'https://hdope.github.io/hokkaido-trip/'
@@ -217,6 +218,27 @@ function SettingsBody() {
             </div>
           </div>
         )}
+      </section>
+
+      <section>
+        <h3 className="font-bold">같이 고르는 사람</h3>
+        <p className="mt-1 text-xs text-stone-500">장소 후보의 픽 버튼에 이 이름이 나와요. 이름은 일정 데이터에만 저장돼요.</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {travelersOf(trip).map((p, i) => (
+            <label key={p.id} className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2 text-sm">
+              <span>{i + 1}번</span>
+              <input
+                className="w-32 rounded border border-stone-300 px-2 py-1 text-right"
+                value={p.name}
+                onChange={(e) =>
+                  mutate((t) => {
+                    t.settings.travelers = travelersOf(t).map((x) => (x.id === p.id ? { ...x, name: e.target.value } : x))
+                  })
+                }
+              />
+            </label>
+          ))}
+        </div>
       </section>
 
       <section>

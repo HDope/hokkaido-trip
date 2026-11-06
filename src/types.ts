@@ -57,6 +57,18 @@ export type Place = {
 
 export type LegMode = 'DRIVE' | 'WALK' | 'TRANSIT' | 'MANUAL'
 
+/** 같은 자리에 갈 수 있는 다른 후보 (예: 저녁 식당 후보). 일정 계산에는 들어가지 않는다 */
+export type StopAlt = {
+  id: string
+  placeId: string
+  stay?: number // 비우면 지금 자리의 체류 시간
+  note?: string
+  picks?: string[] // 이 후보를 고른 사람 id
+}
+
+/** 함께 고르는 사람 (픽 버튼에 이름이 나온다) */
+export type Traveler = { id: string; name: string }
+
 export type Stop = {
   id: string
   placeId: string
@@ -66,6 +78,8 @@ export type Stop = {
   manualMinutes?: number
   note?: string
   meal?: MealMark // 비우면 식당을 도착 시각으로 판단
+  picks?: string[] // 지금 장소를 고른 사람 id
+  alts?: StopAlt[] // 다른 후보들
 }
 
 export type MealMark = 'lunch' | 'dinner' | 'none'
@@ -88,6 +102,7 @@ export type Settings = {
   avoidTolls: boolean
   dailyDriveWarn: number // 분
   dailyDriveLimit: number // 분
+  travelers?: Traveler[] // 픽 버튼에 쓰는 이름
 }
 
 export type RouteLeg = {

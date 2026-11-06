@@ -1,10 +1,11 @@
 import { hasGoogle, useStore } from './store'
-import type { Day, Place, PlaceKind, Stop } from './types'
+import type { Day, Place, PlaceKind, Stop, StopAlt } from './types'
 import { shortName, type Fix } from './lib/schedule'
-import { bestPlacement, betterDay, placeAt, removeWithRepair, reorderWithLegs, type Placement } from './lib/placement'
+import { bestPlacement, betterDay, placeAt, removeWithRepair, reorderWithLegs, swapInAlt, type Placement } from './lib/placement'
 import { candidateToPlace, findCandidatePlace, type Candidate } from './candidates'
 import { haversineMeters } from './lib/geo'
 import { fmtDur, uid } from './lib/time'
+import { josa } from './lib/people'
 
 const DEFAULT_STAY: Record<PlaceKind, number> = {
   sight: 60,
@@ -123,6 +124,78 @@ export function reorderStops(dayId: string, fromIndex: number, toIndex: number) 
   })
 }
 
+// ---------- 후보와 픽 ----------
+
+const findStop = (t: { days: Day[] }, dayId: string, stopId: string) => t.days.find((d) => d.id === dayId)?.stops.find((s) => s.id === stopId)
+
+/** 장소를 이 자리의 후보로 넣는다. 이미 있으면 그대로 두고 알려준다 */
+export function addAlt(dayId: string, stopId: string, placeId: string): string {
+  const { trip, mutate } = useStore.getState()
+  const stop = trip && findStop(trip, dayId, stopId)
+  const place = trip?.places[placeId]
+  if (!stop || !place) return '장소를 찾지 못했어요'
+  if (stop.placeId === placeId || stop.alts?.some((a) => a.placeId === placeId)) return `${josa(shortName(place.name), '은', '는')} 이미 이 자리에 있어요`
+  mutate((t) => {
+    const s = findStop(t, dayId, stopId)!
+    s.alts = [...(s.alts ?? []), { id: uid(), placeId }]
+    t.wishlist = t.wishlist.filter((w) => w !== placeId)
+  })
+  return `${josa(shortName(place.name), '을', '를')} 후보로 넣었어요`
+}
+
+export function updateAlt(dayId: string, stopId: string, altId: string, patch: Partial<StopAlt>) {
+  useStore.getState().mutate((t) => {
+    const a = findStop(t, dayId, stopId)?.alts?.find((x) => x.id === altId)
+    if (!a) return
+    Object.assign(a, patch)
+    for (const k of Object.keys(patch) as (keyof StopAlt)[]) if (patch[k] === undefined) delete a[k]
+  })
+}
+
+/** 후보에서 뺀다. 다른 곳에 안 쓰이면 장소함으로 보낸다 */
+export function removeAlt(dayId: string, stopId: string, altId: string) {
+  useStore.getState().mutate((t) => {
+    const s = findStop(t, dayId, stopId)
+    const alt = s?.alts?.find((a) => a.id === altId)
+    if (!s || !alt) return
+    s.alts = s.alts!.filter((a) => a.id !== altId)
+    if (!s.alts.length) delete s.alts
+    const used = t.days.some((d) => d.lodgingPlaceId === alt.placeId || d.stops.some((x) => x.placeId === alt.placeId || x.alts?.some((a) => a.placeId === alt.placeId)))
+    if (!used && !t.wishlist.includes(alt.placeId)) t.wishlist.unshift(alt.placeId)
+  })
+}
+
+/** 픽을 켜고 끈다. altId 를 안 주면 지금 일정에 있는 장소 */
+export function togglePick(dayId: string, stopId: string, altId: string | undefined, travelerId: string) {
+  useStore.getState().mutate((t) => {
+    const s = findStop(t, dayId, stopId)
+    const target = altId ? s?.alts?.find((a) => a.id === altId) : s
+    if (!target) return
+    const picks = target.picks ?? []
+    target.picks = picks.includes(travelerId) ? picks.filter((p) => p !== travelerId) : [...picks, travelerId]
+    if (!target.picks.length) delete target.picks
+  })
+}
+
+/** 후보를 1순위로 올린다. 지금 장소는 후보로 내려간다 */
+export function promoteAlt(dayId: string, stopId: string, altId: string): string | undefined {
+  const st = useStore.getState()
+  const { trip, routes, mutate } = st
+  if (!trip) return
+  const dayIndex = trip.days.findIndex((d) => d.id === dayId)
+  const swap = dayIndex >= 0 ? swapInAlt(trip, routes, dayIndex, stopId, altId, hasGoogle(st)) : undefined
+  if (!swap) return
+  const before = findStop(trip, dayId, stopId)!
+  const after = swap.stops.find((s) => s.id === stopId)!
+  mutate((t) => {
+    const d = t.days[dayIndex]
+    d.stops = swap.stops
+    if (swap.endLegMode) d.endLegMode = swap.endLegMode
+    else delete d.endLegMode
+  })
+  return `${josa(shortName(trip.places[after.placeId].name), '을', '를')} 1순위로 올렸어요. ${josa(shortName(trip.places[before.placeId].name), '은', '는')} 후보로 남겨 뒀어요`
+}
+
 export function updateDay(dayId: string, patch: Partial<Day>) {
   useStore.getState().mutate((t) => {
     const d = t.days.find((x) => x.id === dayId)
@@ -147,6 +220,11 @@ export function deletePlace(placeId: string) {
     t.wishlist = t.wishlist.filter((w) => w !== placeId)
     for (const d of t.days) {
       d.stops = d.stops.filter((s) => s.placeId !== placeId)
+      for (const s of d.stops) {
+        if (!s.alts) continue
+        s.alts = s.alts.filter((a) => a.placeId !== placeId)
+        if (!s.alts.length) delete s.alts
+      }
       if (d.lodgingPlaceId === placeId) delete d.lodgingPlaceId
       if (d.startPlaceId === placeId) delete d.startPlaceId
     }

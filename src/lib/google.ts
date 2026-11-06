@@ -107,7 +107,7 @@ export async function autocomplete(key: string, input: string, sessionToken: str
     }))
 }
 
-type GPlace = {
+export type GPlace = {
   parkingOptions?: GParking
   id: string
   displayName?: { text: string }
@@ -157,6 +157,29 @@ export async function searchText(key: string, textQuery: string, near?: LatLng):
     name: p.displayName?.text ?? '',
     location: { lat: p.location?.latitude ?? 0, lng: p.location?.longitude ?? 0 },
   }))
+}
+
+/** 어떤 지점 근처에서 검색어에 맞는 곳 (후보 추천용). 상세 정보까지 한 번에 받는다 */
+export async function searchNear(key: string, near: LatLng, textQuery: string, radiusM: number, includedType?: string): Promise<GPlace[]> {
+  const r = await gfetch<{ places?: GPlace[] }>(
+    `${PLACES}/places:searchText`,
+    key,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        textQuery,
+        ...(includedType ? { includedType } : {}),
+        languageCode: 'ko',
+        regionCode: 'JP',
+        pageSize: 15,
+        locationBias: { circle: { center: { latitude: near.lat, longitude: near.lng }, radius: radiusM } },
+      }),
+    },
+    DETAIL_FIELDS.split(',')
+      .map((f) => `places.${f}`)
+      .join(','),
+  )
+  return r.places ?? []
 }
 
 export type LodgingResult = {

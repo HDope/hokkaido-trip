@@ -4,6 +4,7 @@ import { hoursForDay } from './hours'
 import { MEAL_LABEL, type DayPlan, type Warning, tollText } from './schedule'
 import { fmtDate, fmtDur, fmtHM, fmtKm } from './time'
 import { DAY_COLORS, KIND_ICON } from '../ui'
+import { travelersOf } from './people'
 
 const TRAVEL: Record<LegMode, string> = { DRIVE: 'driving', WALK: 'walking', TRANSIT: 'transit', MANUAL: 'driving' }
 
@@ -150,6 +151,7 @@ ${pl.hours || pl.alwaysOpen || (pl.kind !== 'hotel' && pl.kind !== 'airport') ? 
 ${pl.phone ? `<div class="meta">☎ <a href="tel:${esc(pl.phone)}">${esc(pl.phone)}</a> <span class="hint">렌터카 내비에 전화번호 입력</span></div>` : ''}
 ${pl.mapcode ? `<div class="meta">맵코드 <b>${esc(pl.mapcode)}</b></div>` : ''}
 ${s.stop.note ? `<div class="note">📝 ${esc(s.stop.note)}</div>` : ''}
+${s.stop.alts?.length ? `<div class="note">🔁 후보: ${s.stop.alts.map((a) => `${esc(trip.places[a.placeId]?.name ?? '')}${a.picks?.length ? ` (${a.picks.map((id) => esc(travelersOf(trip).find((t) => t.id === id)?.name ?? '')).join('·')} 픽)` : ''}`).join(', ')}</div>` : ''}
 ${pl.season ? `<div class="note">🌸 ${esc(pl.season)}</div>` : ''}
 ${pl.parking ? `<div class="note">🅿️ ${esc(PARKING_TEXT[pl.parking.status])}${pl.parking.fee ? ` · ${esc(pl.parking.fee)}` : ''}${pl.parking.note ? ` · ${esc(pl.parking.note)}` : ''}</div>` : ''}
 ${pl.tips ? `<div class="note">💡 ${esc(pl.tips)}</div>` : ''}

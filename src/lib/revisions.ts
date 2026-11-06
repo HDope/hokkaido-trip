@@ -1,5 +1,6 @@
 import type { Day, Place, Trip } from '../types'
 import { shortName, type DayPlan } from './schedule'
+import { josa, travelersOf } from './people'
 
 // 두 일정이 어떻게 다른지 사람이 읽을 수 있는 문장으로 만든다.
 // 저장할 때 변경 기록의 제목으로 쓰고, 예전 버전을 볼 때 지금과 비교하는 데도 쓴다.
@@ -19,6 +20,21 @@ const stopSignature = (d: Day) => JSON.stringify(d.stops.map((s) => [s.placeId, 
 
 export function describeChanges(from: Trip, to: Trip): string[] {
   const out: string[] = []
+  const people = travelersOf(to)
+  const who = (id: string) => people.find((p) => p.id === id)?.name ?? id
+  // 후보를 1순위로 올린 것: 장소가 바뀌었지만 서로 후보 자리를 맞바꾼 경우
+  const swapped = new Set<string>()
+  for (const d of to.days) {
+    const old = from.days.find((x) => x.id === d.id)
+    for (const s of d.stops) {
+      const o = old?.stops.find((x) => x.id === s.id)
+      if (!o || o.placeId === s.placeId) continue
+      if (o.alts?.some((a) => a.placeId === s.placeId) && s.alts?.some((a) => a.placeId === o.placeId)) {
+        swapped.add(`${d.id}|${o.placeId}`).add(`${d.id}|${s.placeId}`)
+        out.push(`D${to.days.indexOf(d) + 1} ${josa(nameOf(to, s.placeId), '으로', '로')} 결정 (${josa(nameOf(from, o.placeId), '은', '는')} 후보로)`)
+      }
+    }
+  }
   if (from.title !== to.title) out.push('여행 제목 변경')
   if (from.startDate !== to.startDate) out.push(`출발일을 ${to.startDate}로 변경`)
   if (from.days.length !== to.days.length) out.push(`일정이 ${from.days.length}일에서 ${to.days.length}일로 변경`)
@@ -37,8 +53,8 @@ export function describeChanges(from: Trip, to: Trip): string[] {
     }
     const before = old.stops.map((s) => s.placeId)
     const after = d.stops.map((s) => s.placeId)
-    for (const id of after) if (!before.includes(id)) added.push({ dayId: d.id, placeId: id })
-    for (const id of before) if (!after.includes(id)) removed.push({ dayId: d.id, placeId: id })
+    for (const id of after) if (!before.includes(id) && !swapped.has(`${d.id}|${id}`)) added.push({ dayId: d.id, placeId: id })
+    for (const id of before) if (!after.includes(id) && !swapped.has(`${d.id}|${id}`)) removed.push({ dayId: d.id, placeId: id })
   }
 
   for (const r of removed) {
@@ -64,6 +80,32 @@ export function describeChanges(from: Trip, to: Trip): string[] {
       out.push(sameOrder ? `${tag} 시간·이동 수단 변경` : `${tag} 순서 변경`)
     } else if (sameSet && old.stops.some((s, i) => (s.note ?? '') !== (d.stops[i]?.note ?? ''))) {
       out.push(`${tag} 장소 메모 변경`)
+    }
+  }
+
+  // 후보와 픽
+  for (const d of to.days) {
+    const old = fromDays.get(d.id)
+    if (!old) continue
+    const tag = label(to, d.id)
+    for (const s of d.stops) {
+      const o = old.stops.find((x) => x.id === s.id)
+      if (!o) continue
+      const wasSwapped = o.placeId !== s.placeId
+      const oldAlts = new Map((o.alts ?? []).map((a) => [a.placeId, a]))
+      const newAlts = new Map((s.alts ?? []).map((a) => [a.placeId, a]))
+      if (!wasSwapped) {
+        for (const id of newAlts.keys()) if (!oldAlts.has(id)) out.push(`${tag} ${nameOf(to, s.placeId)} 후보에 ${nameOf(to, id)} 추가`)
+        for (const id of oldAlts.keys()) if (!newAlts.has(id)) out.push(`${tag} ${nameOf(to, s.placeId)} 후보에서 ${nameOf(from, id)} 뺌`)
+      }
+      // 장소별로 픽이 바뀐 것 (지금 장소와 후보 모두)
+      const picksBefore = new Map<string, string[]>([[o.placeId, o.picks ?? []], ...[...oldAlts].map(([id, a]) => [id, a.picks ?? []] as [string, string[]])])
+      const picksAfter = new Map<string, string[]>([[s.placeId, s.picks ?? []], ...[...newAlts].map(([id, a]) => [id, a.picks ?? []] as [string, string[]])])
+      for (const [id, now] of picksAfter) {
+        const was = picksBefore.get(id) ?? []
+        for (const p of now) if (!was.includes(p)) out.push(`${josa(who(p), '이', '가')} ${nameOf(to, id)} 픽`)
+        for (const p of was) if (!now.includes(p) && picksBefore.has(id)) out.push(`${josa(who(p), '이', '가')} ${nameOf(to, id)} 픽 취소`)
+      }
     }
   }
 

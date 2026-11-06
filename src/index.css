@@ -24,3 +24,11 @@ body {
   font-family: inherit;
   background: #e9e7e1;
 }
+
+/* 옆으로 넘기는 후보 카드: 스크롤바는 숨기고 넘기기는 그대로 */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
