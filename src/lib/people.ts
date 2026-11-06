@@ -11,7 +11,7 @@ export function travelersOf(trip: Pick<Trip, 'settings'>): Traveler[] {
   return t?.length ? t : DEFAULT_TRAVELERS
 }
 
-/** 받침에 맞는 조사: josa('희동', '이', '가') → '희동이' */
+/** 받침에 맞는 조사: josa('지훈', '이', '가') → '지훈이', josa('수아', '이', '가') → '수아가' */
 export function josa(word: string, withFinal: string, withoutFinal: string): string {
   const last = word.trim().slice(-1)
   const code = last.charCodeAt(0) - 0xac00
