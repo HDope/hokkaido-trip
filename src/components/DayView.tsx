@@ -4,7 +4,8 @@ import { CSS } from '@dnd-kit/utilities'
 import { useStore } from '../store'
 import { useGoogle } from '../hooks'
 import type { LegMode, MealMark } from '../types'
-import { MEAL_LABEL, tollText, type DayPlan, type LegPlan, type StopPlan } from '../lib/schedule'
+import { MEAL_LABEL, shortName, tollText, type DayPlan, type LegPlan, type StopPlan } from '../lib/schedule'
+import { josa } from '../lib/people'
 import { hoursForDay } from '../lib/hours'
 import { MODE_ICON, MODE_LABEL } from '../lib/routing'
 import { dayPoints, dayRouteUrls, directionsUrl } from '../lib/export'
@@ -564,7 +565,16 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
                   </button>
                 </span>
               ) : (
-                <button className="text-stone-400 hover:text-violet-700" title="이 시각에 도착하도록 고정 (예약·공연·불꽃놀이)" onClick={() => updateStop(day.id, stop.id, { fixedTime: fmtHM(sp.arrive).replace('익일 ', '') })}>
+                <button
+                  className="text-stone-400 hover:text-violet-700"
+                  title="이 시각에 도착하도록 고정 (예약·공연·불꽃놀이)"
+                  onClick={() => {
+                    const time = fmtHM(sp.arrive).replace('익일 ', '')
+                    updateStop(day.id, stop.id, { fixedTime: time })
+                    // 한 번 누르면 바로 고정되니, 잘못 눌렀을 때 알아챌 수 있게 알려준다
+                    notify(`${josa(shortName(place.name), '을', '를')} ${time} 도착으로 고정했어요. 잘못 눌렀으면 ↶ 되돌리기`)
+                  }}
+                >
                   📌 시각 고정
                 </button>
               )}
