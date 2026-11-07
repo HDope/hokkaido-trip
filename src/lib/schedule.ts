@@ -239,6 +239,38 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
     warnings.push({ level: 'info', text: '이 날 숙소가 아직 정해지지 않았어요' })
   }
 
+  // 체크인: 이 날 처음 묵는 숙소면 처음 도착하는 시각을 체크인 시간과 맞춰 본다
+  const prevLodgingId = index > 0 ? trip.days[index - 1].lodgingPlaceId : undefined
+  if (lodging && lodging.id !== prevLodgingId) {
+    const visit = stops.find((x) => x.place?.id === lodging.id)
+    const arrive = visit ? visit.arrive : end
+    const target = visit ? visit.warnings : warnings
+    // 숙소 카드에 붙는 경고면 이름을 빼고, 하루 경고로 붙으면 이름을 넣는다
+    const name = visit ? '' : `${shortName(lodging.name)} `
+    const opens = parseHM(lodging.checkIn)
+    const until = parseHM(lodging.checkInUntil)
+    if (until != null && arrive > until) {
+      target.push({ level: 'serious', text: `${name}체크인 마감 ${lodging.checkInUntil}보다 ${fmtDur(arrive - until)} 늦게 도착해요 — 숙소에 늦게 도착한다고 미리 알리세요` })
+    } else if (until != null && until - arrive < 30) {
+      target.push({ level: 'warning', text: `${name}체크인 마감 ${lodging.checkInUntil}까지 여유 ${fmtDur(until - arrive)} — 늦어질 수 있으면 숙소에 미리 알리세요` })
+    }
+    if (opens != null && opens - arrive > 15) {
+      target.push({ level: 'info', text: `체크인 ${lodging.checkIn} 전 도착 — 짐 맡기기·주차만 될 수 있어요` })
+    }
+  }
+  // 체크아웃: 전날 숙소를 떠나는 날이면 출발 시각을 체크아웃 시간과 맞춰 본다
+  const prevLodging = prevLodgingId ? trip.places[prevLodgingId] : undefined
+  if (prevLodging && prevLodging.id !== lodging?.id && startPlace?.id === prevLodging.id) {
+    const out = parseHM(prevLodging.checkOut)
+    if (out != null && start > out) {
+      warnings.push({
+        level: 'warning',
+        text: `${shortName(prevLodging.name)} 체크아웃 ${prevLodging.checkOut}보다 늦게 출발해요`,
+        fix: { kind: 'shiftStart', dayId: day.id, value: prevLodging.checkOut!, label: `${prevLodging.checkOut} 출발로` },
+      })
+    }
+  }
+
   const all = [...warnings, ...stops.flatMap((x) => [...x.warnings, ...(x.leg?.warnings ?? [])]), ...(endLeg?.warnings ?? [])]
   const counts = { critical: 0, serious: 0, warning: 0, info: 0 }
   for (const w of all) counts[w.level]++

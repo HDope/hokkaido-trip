@@ -53,6 +53,11 @@ export type Place = {
   matchWarning?: string
   googleName?: string // 구글에서 연결된 장소 이름 (엉뚱한 곳과 연결되지 않았는지 확인용)
   skipGoogle?: boolean // 행사처럼 구글 장소와 맞지 않는 곳은 검증에서 제외
+  // 숙소: 구글에는 없는 정보라 직접 넣는다. 넣어 두면 도착·출발 시각을 자동으로 점검한다
+  checkIn?: string // "15:00"
+  checkInUntil?: string // 체크인 마감 "19:00" (없으면 점검 안 함)
+  checkOut?: string // "11:00"
+  checkNote?: string // 출처, 늦을 때 연락처 등
 }
 
 export type LegMode = 'DRIVE' | 'WALK' | 'TRANSIT' | 'MANUAL'

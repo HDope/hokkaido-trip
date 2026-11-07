@@ -270,6 +270,13 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
               ) : (
                 <div className="text-stone-400">아직 없어요</div>
               )}
+              {plan.lodging && (plan.lodging.checkIn || plan.lodging.checkOut) && (
+                <div className="text-xs text-stone-500">
+                  {plan.lodging.checkIn && `체크인 ${plan.lodging.checkIn}${plan.lodging.checkInUntil ? `~${plan.lodging.checkInUntil}` : ''}`}
+                  {plan.lodging.checkIn && plan.lodging.checkOut && ' · '}
+                  {plan.lodging.checkOut && `체크아웃 ${plan.lodging.checkOut}`}
+                </div>
+              )}
               {plan.lodging?.phone && <div className="text-xs text-stone-500">☎ {plan.lodging.phone}</div>}
               {plan.lodging && (
                 <div className="mt-1 text-[12px]">
