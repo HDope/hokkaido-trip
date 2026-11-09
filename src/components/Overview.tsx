@@ -3,6 +3,7 @@ import { tollText, type DayPlan } from '../lib/schedule'
 import { fmtDate, fmtDur, fmtHM, fmtKm } from '../lib/time'
 import { dayColor, LEVEL_META } from '../ui'
 import { TripGantt } from './Timeline'
+import { TripSummary } from './TripSummary'
 
 export function Overview({ plans }: { plans: DayPlan[] }) {
   const trip = useStore((s) => s.trip)!
@@ -41,6 +42,8 @@ export function Overview({ plans }: { plans: DayPlan[] }) {
         />
         <Stat label="영업시간 미확인" value={`${unknownHours}곳`} sub="구글 검증 시 해결" tone={unknownHours ? 'warn' : 'ok'} />
       </div>
+
+      <TripSummary plans={plans} />
 
       <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-4">
         <h3 className="mb-3 text-sm font-bold text-stone-700">하루 흐름 한눈에 보기</h3>

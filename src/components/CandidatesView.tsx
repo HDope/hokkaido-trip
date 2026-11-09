@@ -4,12 +4,9 @@ import type { DayPlan } from '../lib/schedule'
 import { CANDIDATES, candidateMapUrl, filterCandidates, findCandidatePlace, GROUP, REGIONS, THEMES, THEME_BY_ID, type Candidate, type RegionId, type ThemeId } from '../candidates'
 import { addCandidate, ensureCandidatePlace } from '../actions'
 import { dayDate, fmtDate } from '../lib/time'
-import { dayColor } from '../ui'
+import { CELL_SHADE, dayColor } from '../ui'
 import { Btn, cx, ExtLink } from './common'
 import { AddToDayMenu } from './AddToDayMenu'
-
-// 후보 수를 칸 색으로 (한 색상의 명도 단계)
-const CELL_SHADE = ['', 'bg-[#cde2fb]', 'bg-[#9ec5f4]', 'bg-[#86b6ef]', 'bg-[#6da7ec]', 'bg-[#5598e7]']
 
 export function CandidatesView({ plans }: { plans: DayPlan[] }) {
   const trip = useStore((s) => s.trip)!

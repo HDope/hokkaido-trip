@@ -17,7 +17,7 @@ export const GROUP: Record<Group, { label: string; color: string }> = {
 
 export const THEMES: { id: ThemeId; label: string; icon: string; group: Group }[] = [
   { id: 'wine', label: '와이너리', icon: '🍇', group: 'drink' },
-  { id: 'beer', label: '맥주 공장', icon: '🍺', group: 'drink' },
+  { id: 'beer', label: '맥주', icon: '🍺', group: 'drink' },
   { id: 'sake', label: '사케 양조장', icon: '🍶', group: 'drink' },
   { id: 'lake', label: '호수', icon: '💧', group: 'scene' },
   { id: 'lavender', label: '라벤더', icon: '💜', group: 'scene' },

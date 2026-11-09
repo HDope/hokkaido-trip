@@ -55,7 +55,10 @@ export const CAR_LEFT_M = 400
 /** 해 진 뒤 이 시간 넘게 걸으면 알려준다(분) */
 const NIGHT_WALK_MIN = 20
 /** 시음이 있는 곳 */
-const ALCOHOL = /와이너리|도멘|양조|주조|맥주|비어|ワイナリー|ワイン|ドメーヌ|酒造|ビール|winery|domaine|brewery/i
+export const WINE = /와이너리|도멘|ワイナリー|ワイン|ドメーヌ|winery|domaine/i
+export const BEER = /맥주|비어|ビール|brewery/i
+export const SAKE = /양조|주조|酒造/
+const ALCOHOL = new RegExp([WINE, BEER, SAKE].map((r) => r.source).join('|'), 'i')
 
 export type DayPlan = {
   day: Day
@@ -92,6 +95,12 @@ export function startPlaceIdFor(trip: Trip, index: number): string | undefined {
 }
 
 const LEVEL_ORDER: Level[] = ['critical', 'serious', 'warning', 'info']
+
+/** 그날 i번째 장소 뒤로 운전할 구간이 남아 있는지 */
+export function drivesAfter(plan: Pick<DayPlan, 'stops' | 'endLeg'>, i: number): boolean {
+  const driving = (leg?: LegPlan) => leg?.mode === 'DRIVE' && leg.meters >= CAR_LEFT_M
+  return plan.stops.slice(i + 1).some((x) => driving(x.leg)) || driving(plan.endLeg)
+}
 
 /** 점심·저녁 판단: 직접 표시한 값 우선, 없으면 식당의 도착 시각으로 */
 export function mealOf(stop: Stop, place: Place | undefined, arrive: number): Meal | undefined {
@@ -262,8 +271,7 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
   // 시음이 있는 곳이나 저녁 뒤에 운전이 남아 있으면 운전자에게 알려준다
   stops.forEach((sp, i) => {
     if (!sp.place || (sp.meal !== 'dinner' && (sp.place.kind === 'hotel' || !ALCOHOL.test(`${sp.place.name} ${sp.place.nameLocal ?? ''}`)))) return
-    const drivesLater = stops.slice(i + 1).some((x) => x.leg?.mode === 'DRIVE' && x.leg.meters >= CAR_LEFT_M) || (endLeg?.mode === 'DRIVE' && endLeg.meters >= CAR_LEFT_M)
-    if (drivesLater) sp.warnings.push({ level: 'info', text: '이 뒤에 운전이 있어요. 운전자는 한 모금도 안 돼요' })
+    if (drivesAfter({ stops, endLeg }, i)) sp.warnings.push({ level: 'info', text: '이 뒤에 운전이 있어요. 운전자는 한 모금도 안 돼요' })
   })
 
   const warnings: Warning[] = []

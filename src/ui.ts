@@ -6,6 +6,11 @@ export const DAY_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'
 
 export const dayColor = (i: number) => DAY_COLORS[i % DAY_COLORS.length]
 
+// 칸 안의 수를 색으로 (한 색상의 명도 단계). 0번은 빈칸
+export const CELL_SHADE = ['', 'bg-[#cde2fb]', 'bg-[#9ec5f4]', 'bg-[#86b6ef]', 'bg-[#6da7ec]', 'bg-[#5598e7]']
+// 술 열은 다른 테마와 구분되도록 주황 계열 (테마 후보 지도의 '술 투어' 색)
+export const CELL_SHADE_DRINK = ['', 'bg-[#fcd9c9]', 'bg-[#f9b797]', 'bg-[#f5a07a]', 'bg-[#f1885c]', 'bg-[#eb6834]']
+
 export const KIND_ICON: Record<PlaceKind, string> = {
   sight: '🏞️',
   food: '🍜',

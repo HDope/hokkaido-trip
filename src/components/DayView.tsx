@@ -19,7 +19,6 @@ import {
   deleteDay,
   moveDay,
   moveStopToDay,
-  removeStop,
   reorderStops,
   togglePick,
   updateDay,
@@ -27,6 +26,7 @@ import {
   upsertPlace,
 } from '../actions'
 import { Btn, cx, ExtLink, InlineText, Menu, MenuItem, TimeInput, WarningList, isWideScreen } from './common'
+import { RemoveStopMenu } from './RemoveStopMenu'
 import { ParkingChip } from './ParkingInfo'
 import { LodgingFinder } from './LodgingFinder'
 import { PlaceSearch } from './PlaceSearch'
@@ -752,16 +752,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
                     ))
                 }
               </Menu>
-              <Menu label={<span className="text-xs text-stone-500">빼기</span>}>
-                {(close) => (
-                  <>
-                    <MenuItem onClick={() => (removeStop(day.id, stop.id, true), notify(`${place.name}을(를) 장소함으로 옮겼어요`), close())}>장소함으로 보내기</MenuItem>
-                    <MenuItem danger onClick={() => (removeStop(day.id, stop.id), notify('일정에서 뺐어요 (↶ 되돌리기)'), close())}>
-                      일정에서 삭제
-                    </MenuItem>
-                  </>
-                )}
-              </Menu>
+              <RemoveStopMenu dayId={day.id} stopId={stop.id} name={place.name} />
             </div>
             </>
           )}
