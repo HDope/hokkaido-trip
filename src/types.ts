@@ -58,6 +58,10 @@ export type Place = {
   checkInUntil?: string // 체크인 마감 "19:00" (없으면 점검 안 함)
   checkOut?: string // "11:00"
   checkNote?: string // 출처, 늦을 때 연락처 등
+  // 숙소 조식: 넣어 두면 아침을 먹고 출발할 수 있는지 자동으로 점검한다
+  breakfastFrom?: string // 조식 시작 "07:00"
+  breakfastUntil?: string // 마지막 입장 "09:30"
+  breakfastNote?: string // 식당 이름, 요금 등
 }
 
 export type LegMode = 'DRIVE' | 'WALK' | 'TRANSIT' | 'MANUAL'
@@ -99,6 +103,7 @@ export type Day = {
   endLegMode?: LegMode
   endManualMinutes?: number
   note?: string
+  noBreakfast?: boolean // 이 날은 숙소 아침을 안 먹는다
 }
 
 export type Settings = {

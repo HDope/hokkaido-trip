@@ -4,7 +4,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { useStore } from '../store'
 import { useGoogle } from '../hooks'
 import type { LegMode, MealMark } from '../types'
-import { MEAL_LABEL, shortName, tollText, type DayPlan, type LegPlan, type StopPlan } from '../lib/schedule'
+import { BREAKFAST_LABEL, MEAL_LABEL, shortName, tollText, type DayPlan, type LegPlan, type StopPlan } from '../lib/schedule'
 import { josa } from '../lib/people'
 import { hoursForDay } from '../lib/hours'
 import { MODE_ICON, MODE_LABEL } from '../lib/routing'
@@ -142,6 +142,14 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
           {plan.pendingLegs > 0 && <span className="text-violet-600">경로 계산 중 {plan.pendingLegs}구간…</span>}
         </div>
         <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-stone-600">
+          {plan.breakfast && (
+            <span>
+              {BREAKFAST_LABEL}{' '}
+              <button className="font-semibold text-stone-900 hover:text-violet-700" onClick={() => openPlace(plan.breakfast!.place.id)}>
+                {shortName(plan.breakfast.place.name)}
+              </button>
+            </span>
+          )}
           {(['lunch', 'dinner'] as const).map((m) => {
             const sp = plan[m]
             if (!sp && m === 'lunch' && plan.start > 13 * 60) return null
@@ -231,6 +239,25 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
           </div>
           <TimeInput value={day.startTime} onChange={(v) => updateDay(day.id, { startTime: v })} />
         </div>
+        {plan.breakfast ? (
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg bg-amber-50 px-3 py-1.5 text-[12.5px] text-stone-700">
+            <span className="font-semibold">{BREAKFAST_LABEL}</span>
+            <span className="font-semibold tabular-nums">
+              {fmtHM(plan.breakfast.start)}~{fmtHM(plan.breakfast.end)}
+            </span>
+            <span className="min-w-0 flex-1 text-stone-600">{plan.breakfast.place.breakfastNote ?? (plan.breakfast.known ? '숙소 조식' : '숙소 상세에 조식 시간을 넣으면 먹을 수 있는지 점검해요')}</span>
+            <button className="shrink-0 text-xs text-stone-500 hover:underline" onClick={() => updateDay(day.id, { noBreakfast: true })}>
+              안 먹음
+            </button>
+          </div>
+        ) : (
+          day.noBreakfast &&
+          plan.startPlace?.kind === 'hotel' && (
+            <button className="mt-1.5 text-xs text-stone-500 hover:underline" onClick={() => updateDay(day.id, { noBreakfast: undefined })}>
+              {BREAKFAST_LABEL} 다시 넣기
+            </button>
+          )
+        )}
 
         <SortableContext items={day.stops.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           {plan.stops.map((sp, i) => (

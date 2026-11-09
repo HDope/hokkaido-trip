@@ -213,13 +213,15 @@ function PlaceBody({ place }: { place: Place }) {
 
       {place.kind === 'hotel' && (
         <section>
-          <div className="mb-1.5 text-sm font-semibold">체크인·체크아웃</div>
+          <div className="mb-1.5 text-sm font-semibold">체크인·체크아웃·조식</div>
           <div className="grid grid-cols-3 gap-2">
             {(
               [
                 ['checkIn', '체크인'],
                 ['checkInUntil', '체크인 마감'],
                 ['checkOut', '체크아웃'],
+                ['breakfastFrom', '조식 시작'],
+                ['breakfastUntil', '조식 마지막 입장'],
               ] as const
             ).map(([k, label]) => (
               <label key={k} className="flex flex-col gap-1 rounded-lg border border-stone-200 px-2 py-1.5">
@@ -235,7 +237,8 @@ function PlaceBody({ place }: { place: Place }) {
             ))}
           </div>
           <input className={cx(input, 'mt-2')} placeholder="출처·메모 (예: 공식 사이트, 늦을 때 연락처)" value={place.checkNote ?? ''} onChange={(e) => updatePlace(place.id, { checkNote: e.target.value || undefined })} />
-          <p className="mt-1.5 text-xs text-stone-400">구글에는 없는 정보라 직접 넣어요. 넣어 두면 도착·출발 시각이 맞는지 자동으로 점검해요.</p>
+          <input className={cx(input, 'mt-2')} placeholder="조식 메모 (식당 이름, 요금)" value={place.breakfastNote ?? ''} onChange={(e) => updatePlace(place.id, { breakfastNote: e.target.value || undefined })} />
+          <p className="mt-1.5 text-xs text-stone-400">구글에는 없는 정보라 직접 넣어요. 넣어 두면 도착·출발 시각과 아침을 먹고 나갈 수 있는지 자동으로 점검해요.</p>
         </section>
       )}
 

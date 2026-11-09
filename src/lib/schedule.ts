@@ -43,10 +43,18 @@ export type StopPlan = {
 
 export type Meal = 'lunch' | 'dinner'
 
+export type BreakfastPlan = { place: Place; start: number; end: number; minutes: number; known: boolean }
+
+export const BREAKFAST_LABEL = '🍳 아침'
+/** 조식에 잡는 시간과, 먹고 나서 출발할 때까지의 준비 시간(분) */
+const BREAKFAST_MIN = 45
+const BREAKFAST_READY = 10
+
 export type DayPlan = {
   day: Day
   title: string // 직접 쓴 제목, 없으면 일정에서 만든 제목
   autoTitle: string
+  breakfast?: BreakfastPlan
   lunch?: StopPlan
   dinner?: StopPlan
   index: number
@@ -271,6 +279,28 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
     }
   }
 
+  // 아침: 묵은 숙소에서 출발하는 날이면 출발 전에 조식을 넣고, 먹을 시간이 되는지 본다
+  let breakfast: BreakfastPlan | undefined
+  if (startPlace?.kind === 'hotel' && !day.noBreakfast) {
+    const from = parseHM(startPlace.breakfastFrom)
+    const until = parseHM(startPlace.breakfastUntil)
+    const leaveBy = start - BREAKFAST_READY
+    let bStart = leaveBy - BREAKFAST_MIN
+    if (from != null && bStart < from) bStart = from
+    if (until != null && bStart > until) bStart = until
+    const bEnd = Math.min(bStart + BREAKFAST_MIN, Math.max(leaveBy, bStart))
+    const minutes = bEnd - bStart
+    breakfast = { place: startPlace, start: bStart, end: bEnd, minutes, known: from != null }
+    if (from != null && minutes < 30) {
+      const need = fmtHM(from + 30 + BREAKFAST_READY)
+      warnings.push({
+        level: 'warning',
+        text: minutes > 0 ? `조식이 ${startPlace.breakfastFrom}부터라 ${day.startTime} 출발이면 ${fmtDur(minutes)}밖에 못 먹어요` : `조식이 ${startPlace.breakfastFrom}부터라 ${day.startTime} 출발이면 못 먹어요`,
+        fix: { kind: 'shiftStart', dayId: day.id, value: need, label: `${need} 출발로` },
+      })
+    }
+  }
+
   const all = [...warnings, ...stops.flatMap((x) => [...x.warnings, ...(x.leg?.warnings ?? [])]), ...(endLeg?.warnings ?? [])]
   const counts = { critical: 0, serious: 0, warning: 0, info: 0 }
   for (const w of all) counts[w.level]++
@@ -281,6 +311,7 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
     day,
     title: day.title?.trim() || autoTitle,
     autoTitle,
+    breakfast,
     lunch: stops.find((x) => x.meal === 'lunch'),
     dinner: stops.find((x) => x.meal === 'dinner'),
     index,
