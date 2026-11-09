@@ -1,7 +1,7 @@
 import type { Day, LegMode, Place, RouteLeg, Stop, StopAlt, Trip } from '../types'
 import { haversineMeters } from './geo'
 import { roughMinutes } from './routing'
-import { computeDay, startPlaceIdFor, type DayPlan } from './schedule'
+import { CAR_LEFT_M, computeDay, startPlaceIdFor, type DayPlan } from './schedule'
 
 // 장소를 어느 자리에 넣을지, 어떻게 이동할지 정한다.
 // 구글을 부르지 않고 저장된 경로와 직선거리 추정으로 계산하므로 무료 모드와 오프라인에서도 돈다.
@@ -12,8 +12,6 @@ const SIDE_BY_SIDE_M = 300
 const WALK_GROUP_M = 1000
 /** 이보다 먼 도보 구간은 운전으로 되돌린다 */
 const WALK_TOO_FAR_M = 2500
-/** 차에서 이보다 멀어지면 차를 가지러 걸어가야 한다 */
-const CAR_LEFT_M = 400
 /** 주차장과 이 거리 안이면 주차장에 먼저 세우는 게 맞다 */
 const PARK_FIRST_M = 800
 /** 저녁 뒤로는 이보다 먼 곳에 가지 않는다 */
@@ -273,7 +271,8 @@ export function swapInAlt(trip: Trip, routes: Record<string, RouteLeg>, dayIndex
   const place = alt && trip.places[alt.placeId]
   if (!s || !alt || !place) return
   const demoted: StopAlt = clean({ id: alt.id, placeId: s.placeId, stay: s.stay, note: s.note, picks: s.picks })
-  const promoted: Stop = clean({ ...s, placeId: alt.placeId, stay: alt.stay ?? s.stay, note: alt.note, picks: alt.picks, alts: s.alts!.map((a) => (a.id === altId ? demoted : a)) })
+  // 예약 정보는 그 장소의 것이라 함께 넘기지 않는다
+  const promoted: Stop = clean({ ...s, placeId: alt.placeId, stay: alt.stay ?? s.stay, note: alt.note, picks: alt.picks, booking: undefined, alts: s.alts!.map((a) => (a.id === altId ? demoted : a)) })
 
   const before = day.stops.slice(0, i)
   const after = day.stops.slice(i + 1)

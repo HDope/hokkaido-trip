@@ -51,6 +51,14 @@ export function checkHours(place: Place, weekday: number, arrive: number, depart
   return { status: 'closedDay' }
 }
 
+/** 구글 영업시간을 여행 시기와 다른 계절에 받았으면 "11/5 기준"을 돌려준다. 재검증하거나 직접 고치면 사라진다 */
+export function hoursAsOf(place: Place, visit: Date): string | undefined {
+  if (place.alwaysOpen || place.hours?.source !== 'google' || !place.verifiedAt) return undefined
+  const v = new Date(place.verifiedAt)
+  const apart = Math.abs(v.getUTCMonth() - visit.getUTCMonth())
+  return Math.min(apart, 12 - apart) >= 2 ? `${v.getMonth() + 1}/${v.getDate()} 기준` : undefined
+}
+
 /** 해당 요일의 영업시간 한 줄 요약 */
 export function hoursForDay(place: Place, weekday: number): string {
   if (place.alwaysOpen) return '상시 개방'

@@ -1,5 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
-import qrcode from 'qrcode-generator'
+import { useEffect, useRef, useState } from 'react'
 import { serializeTrip, useStore } from '../store'
 import type { Settings, Trip } from '../types'
 import { readCloudConfig, shareLink } from '../lib/backend'
@@ -18,13 +17,23 @@ function OtherDevices() {
   const [reveal, setReveal] = useState(false)
   const cloud = readCloudConfig()
   const link = cloud ? shareLink(cloud) : ''
-  const svg = useMemo(() => {
-    if (!link) return ''
-    const qr = qrcode(0, 'M')
-    qr.addData(link)
-    qr.make()
-    return qr.createSvgTag({ cellSize: 3, margin: 2, scalable: true })
-  }, [link])
+  const [svg, setSvg] = useState('')
+  useEffect(() => {
+    if (!reveal || !link) return
+    let alive = true
+    import('qrcode-generator')
+      .then(({ default: qrcode }) => {
+        if (!alive) return
+        const qr = qrcode(0, 'M')
+        qr.addData(link)
+        qr.make()
+        setSvg(qr.createSvgTag({ cellSize: 3, margin: 2, scalable: true }))
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [reveal, link])
   if (kind !== 'cloud' || !cloud) {
     return (
       <section>
@@ -54,7 +63,7 @@ function OtherDevices() {
           연결 링크·QR 보기
         </Btn>
       )}
-      <p className="mt-2 text-xs text-stone-500">링크가 새면 GitHub에서 토큰을 지우면 바로 막혀요. 일정은 저장할 때마다 이력이 남아요.</p>
+      <p className="mt-2 text-xs text-stone-500">링크가 새면 GitHub에서 토큰을 지우면 새로 받거나 고치는 건 바로 막혀요. 이미 열어 본 기기에는 마지막으로 받은 일정이 보기 전용으로 남아요. 일정은 저장할 때마다 이력이 남아요.</p>
     </section>
   )
 }

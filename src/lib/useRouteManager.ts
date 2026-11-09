@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { hasGoogle, useStore } from '../store'
 import type { RouteLeg } from '../types'
 import { computeRoute, GoogleApiError } from './google'
@@ -12,6 +12,9 @@ import { neededLegs, type DayPlan, type LegPlan } from './schedule'
 const inFlight = new Set<string>()
 const queue: { key: string; leg: LegPlan }[] = []
 let running = 0
+/** 잠깐 실패한 구간은 저장하지 않고 이 시각이 지나면 다시 받는다 */
+const retryAt = new Map<string, number>()
+const RETRY_MS = 5 * 60 * 1000
 const AUTH_REASONS = new Set([
   'API_KEY_INVALID',
   'SERVICE_DISABLED',
@@ -21,7 +24,14 @@ const AUTH_REASONS = new Set([
   'PERMISSION_DENIED',
 ])
 
-async function fetchLeg(leg: LegPlan, cached?: RouteLeg): Promise<RouteLeg> {
+/** 통신 끊김, 요청 한도, 서버 오류는 다시 받으면 될 수 있다 */
+function isTemporary(e: unknown): boolean {
+  if (!(e instanceof GoogleApiError)) return true
+  return e.status === 429 || (e.status ?? 0) >= 500
+}
+
+/** 받은 경로. 잠깐 실패했으면 null */
+async function fetchLeg(leg: LegPlan, cached?: RouteLeg): Promise<RouteLeg | null> {
   const st = useStore.getState()
   const now = new Date().toISOString()
   const google = hasGoogle(st)
@@ -38,6 +48,7 @@ async function fetchLeg(leg: LegPlan, cached?: RouteLeg): Promise<RouteLeg> {
         // 이미 무료 경로로 계산해 둔 구간이면 그대로 쓰고, 없으면 아래에서 무료로 계산
         if (cached && !cached.error) return cached
       } else {
+        if (isTemporary(e)) return null
         // 톨비만 새로 받다 실패하면 경로는 그대로 두고 톨비만 모른다고 표시한다
         if (cached && !cached.error && cached.provider === 'google') return { ...cached, tollYen: null }
         return { provider: 'google', seconds: 0, meters: 0, fetchedAt: now, error: (e as Error).message }
@@ -58,8 +69,8 @@ async function fetchLeg(leg: LegPlan, cached?: RouteLeg): Promise<RouteLeg> {
     try {
       const r = await osrmRoute(leg.from.location, leg.to.location)
       return { provider: 'osrm', ...r, fetchedAt: now }
-    } catch (e) {
-      return { provider: 'osrm', seconds: 0, meters: 0, fetchedAt: now, error: (e as Error).message }
+    } catch {
+      return null
     }
   }
 }
@@ -70,7 +81,10 @@ function pump() {
     const job = queue.shift()!
     running++
     fetchLeg(job.leg, useStore.getState().routes[job.key])
-      .then((leg) => useStore.getState().setRoute(job.key, leg))
+      .then((leg) => {
+        if (leg) useStore.getState().setRoute(job.key, leg)
+        else retryAt.set(job.key, Date.now() + RETRY_MS)
+      })
       .finally(() => {
         running--
         inFlight.delete(job.key)
@@ -83,16 +97,25 @@ export function useRouteManager(plans: DayPlan[]) {
   const apiKey = useStore((s) => s.apiKey)
   const googleStatus = useStore((s) => s.googleStatus)
   const offline = useStore((s) => !!s.offlineSince)
+  const [retryTick, setRetryTick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (retryAt.size) setRetryTick((n) => n + 1)
+    }, 60 * 1000)
+    return () => clearInterval(timer)
+  }, [])
   useEffect(() => {
     if (offline) return // 인터넷이 끊겼으면 저장된 경로만 쓴다
+    const now = Date.now()
     for (const leg of neededLegs(plans)) {
       const r = leg.resolved
       const key = r.status === 'pending' ? r.key : r.status === 'ok' && r.stale ? r.key : undefined
-      if (!key || inFlight.has(key)) continue
+      if (!key || inFlight.has(key) || (retryAt.get(key) ?? 0) > now) continue
+      retryAt.delete(key)
       if (leg.mode === 'MANUAL') continue
       inFlight.add(key)
       queue.push({ key, leg })
     }
     pump()
-  }, [plans, apiKey, googleStatus, offline])
+  }, [plans, apiKey, googleStatus, offline, retryTick])
 }

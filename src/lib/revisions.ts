@@ -92,6 +92,7 @@ export function describeChanges(from: Trip, to: Trip): string[] {
       const o = old.stops.find((x) => x.id === s.id)
       if (!o) continue
       const wasSwapped = o.placeId !== s.placeId
+      if (!wasSwapped && JSON.stringify(o.booking ?? null) !== JSON.stringify(s.booking ?? null)) out.push(`${tag} ${nameOf(to, s.placeId)} 예약 정보 변경`)
       const oldAlts = new Map((o.alts ?? []).map((a) => [a.placeId, a]))
       const newAlts = new Map((s.alts ?? []).map((a) => [a.placeId, a]))
       if (!wasSwapped) {

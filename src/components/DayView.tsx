@@ -2,16 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useStore } from '../store'
-import { useGoogle } from '../hooks'
+import { useGoogle, useJapanNow } from '../hooks'
 import type { LegMode, MealMark } from '../types'
 import { BREAKFAST_LABEL, MEAL_LABEL, shortName, tollText, type DayPlan, type LegPlan, type StopPlan } from '../lib/schedule'
 import { josa } from '../lib/people'
-import { hoursForDay } from '../lib/hours'
+import { hoursAsOf, hoursForDay } from '../lib/hours'
 import { MODE_ICON, MODE_LABEL } from '../lib/routing'
 import { dayPoints, dayRouteUrls, directionsUrl } from '../lib/export'
 import { verifyAll } from '../lib/verify'
 import { optimizeDay, type OptimizeResult } from '../lib/placement'
-import { fmtDate, fmtDur, fmtHM, fmtKm } from '../lib/time'
+import { fmtDate, fmtDur, fmtHM, fmtKm, isoDate } from '../lib/time'
 import { dayColor, KIND_ICON } from '../ui'
 import {
   addDay,
@@ -33,6 +33,8 @@ import { PlaceSearch } from './PlaceSearch'
 import { AltActions, AltAddBox, AltNav, AltSlide, PickButtons } from './StopAlts'
 import { altPreview } from '../lib/placement'
 import { MiniDayBar } from './Timeline'
+import { TodayBar } from './TodayBar'
+import { BookingChip, BookingEditor } from './Bookings'
 
 export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
   const day = plan.day
@@ -49,6 +51,8 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
   const routeUrls = plan.driveMin > 0 ? dayRouteUrls(dayPoints(plan)) : []
   const prevLodging = plan.index > 0 ? trip.days[plan.index - 1].lodgingPlaceId : undefined
   const isLastDay = plan.index === plans.length - 1
+  const now = useJapanNow()
+  const isToday = isoDate(plan.date) === now.date
   // 일정이 바뀌면 전에 계산한 제안은 맞지 않으니 치운다
   useEffect(() => setProposal(undefined), [day.stops])
   const insertBox = (index: number) => (
@@ -89,6 +93,11 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
 
   return (
     <div className="pb-24">
+      {isToday && (
+        <div className="px-5 pt-3">
+          <TodayBar plan={plan} minutes={now.minutes} />
+        </div>
+      )}
       {/* 헤더 */}
       <div className="z-20 border-b border-stone-200 bg-white/95 px-5 pt-4 pb-3 backdrop-blur md:sticky md:top-0">
         <div className="flex items-start gap-3">
@@ -477,6 +486,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
   const alts = useMemo(() => stop.alts ?? [], [stop.alts])
   const [active, setActive] = useState(0)
   const [adding, setAdding] = useState(false)
+  const [editBooking, setEditBooking] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
   const previews = useMemo(() => alts.map((a) => altPreview(trip, routes, plan.index, stop.id, a.id, google)), [trip, routes, plan.index, stop.id, google, alts])
   const go = (i: number) => {
@@ -498,6 +508,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
   if (!place) return null
   const style = { transform: CSS.Transform.toString(transform), transition }
   const verified = place.verifiedAt ? new Date(place.verifiedAt) : undefined
+  const asOf = hoursAsOf(place, plan.date)
 
   return (
     <div ref={setNodeRef} style={style} className={cx(isDragging && 'opacity-40')}>
@@ -617,12 +628,17 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
 
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px]">
               {(place.hours || place.alwaysOpen || (place.kind !== 'hotel' && place.kind !== 'airport')) && (
-                <span className={cx('rounded-md px-1.5 py-0.5', sp.hours.status === 'ok' || sp.hours.status === 'always' ? 'bg-emerald-50 text-emerald-800' : 'bg-stone-100 text-stone-600')}>
+                <span
+                  className={cx('rounded-md px-1.5 py-0.5', asOf ? 'bg-amber-50 text-amber-900' : sp.hours.status === 'ok' || sp.hours.status === 'always' ? 'bg-emerald-50 text-emerald-800' : 'bg-stone-100 text-stone-600')}
+                  title={asOf ? '구글은 받은 시점의 영업시간을 줘요. 여행 때는 다를 수 있어요' : place.hours?.note}
+                >
                   🕘 {hoursForDay(place, plan.weekday)}
                   {place.hours?.source === 'curated' && <span className="text-stone-400"> · 웹정보</span>}
+                  {place.hours?.source === 'manual' && <span className="text-stone-500"> · 확인함</span>}
+                  {asOf && <span className="font-semibold"> · {asOf}</span>}
                 </span>
               )}
-              {verified && <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-emerald-700">✓ 구글 {verified.getMonth() + 1}/{verified.getDate()}</span>}
+              {verified && !asOf && <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-emerald-700">✓ 구글 {verified.getMonth() + 1}/{verified.getDate()}</span>}
               {place.rating && (
                 <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-600">
                   ★ {place.rating.toFixed(1)}
@@ -630,7 +646,13 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
                 </span>
               )}
               {place.phone && <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-600">☎ {place.phone}</span>}
+              {place.mapcode && (
+                <button className="rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-600" title="눌러서 복사" onClick={() => (void navigator.clipboard?.writeText(place.mapcode!), notify('맵코드를 복사했어요'))}>
+                  맵코드 {place.mapcode}
+                </button>
+              )}
               <ParkingChip place={place} byCar={!sp.leg || sp.leg.mode === 'DRIVE'} onClick={() => openPlace(place.id)} />
+              <BookingChip booking={stop.booking} onClick={() => setEditBooking(!editBooking)} />
             </div>
 
             {place.season && <div className="mt-1.5 rounded-md bg-violet-50 px-2 py-1 text-[12px] leading-snug text-violet-900">🌸 {place.season}</div>}
@@ -649,7 +671,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
           </div>
           {alts.map((a, k) => (
             <div key={a.id} className="w-full shrink-0 snap-start">
-              <AltSlide dayId={day.id} stopId={stop.id} alt={a} preview={previews[k]} weekday={plan.weekday} />
+              <AltSlide dayId={day.id} stopId={stop.id} alt={a} preview={previews[k]} weekday={plan.weekday} date={plan.date} />
             </div>
           ))}
           </div>
@@ -686,6 +708,11 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
               <button className="rounded-md px-1.5 py-0.5 font-semibold text-amber-700 hover:bg-amber-50" title="이 자리에 갈 다른 후보를 넣어 두고 둘이 픽해요" onClick={() => setAdding(!adding)}>
                 ＋ 후보
               </button>
+              {!stop.booking && (
+                <button className="rounded-md px-1.5 py-0.5 text-stone-500 hover:bg-stone-100" title="예약할 곳이면 예약 달력에 넣어요" onClick={() => setEditBooking(!editBooking)}>
+                  📅 예약
+                </button>
+              )}
               {!showNote && !stop.note && (
                 <button className="rounded-md px-1.5 py-0.5 text-stone-500 hover:bg-stone-100" onClick={() => setShowNote(true)}>
                   메모
@@ -752,6 +779,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
           onAdded={() => setTimeout(() => go(alts.length + 1), 60)}
         />
       )}
+      {editBooking && <BookingEditor dayId={day.id} stop={stop} onClose={() => setEditBooking(false)} />}
     </div>
   )
 }

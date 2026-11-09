@@ -23,12 +23,26 @@ function SummaryLines({ s }: { s: VersionSummary }) {
 export function ReadOnlyBanner() {
   const preview = useStore((s) => s.preview)
   const offlineSince = useStore((s) => s.offlineSince)
+  const offlineReason = useStore((s) => s.offlineReason)
+  const reconnect = useStore((s) => s.reconnect)
   const trip = useStore((s) => s.trip)
   const changes = useMemo(() => {
     const live = liveTrip()
     return preview && trip && live ? describeChanges(live, trip) : []
   }, [preview, trip])
 
+  if (offlineReason === 'access') {
+    return (
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[13px] text-amber-950">
+        <span className="min-w-0 flex-1 basis-56">
+          <b>접속 토큰이 막혔어요.</b> {fmtWhen(offlineSince ?? '')}에 받은 일정을 보기 전용으로 보여주고 있어요.
+        </span>
+        <Btn className="px-2.5 py-1 text-xs" onClick={reconnect}>
+          다시 연결하기
+        </Btn>
+      </div>
+    )
+  }
   if (offlineSince) {
     return (
       <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[13px] text-amber-950">

@@ -1,8 +1,8 @@
 import { useDroppable } from '@dnd-kit/core'
 import { useStore } from '../store'
-import { useGoogle } from '../hooks'
+import { useGoogle, useJapanNow } from '../hooks'
 import { shortName, tollText, type DayPlan } from '../lib/schedule'
-import { dayDate, fmtDate, fmtDur } from '../lib/time'
+import { dayDate, fmtDate, fmtDur, isoDate } from '../lib/time'
 import { dayColor, LEVEL_META } from '../ui'
 import { addDay } from '../actions'
 import { cx, InlineText } from './common'
@@ -94,9 +94,16 @@ export function Sidebar({ plans }: { plans: DayPlan[] }) {
   const selectedDayId = useStore((s) => s.selectedDayId)
   const selectDay = useStore((s) => s.selectDay)
   const done = trip.checklist.filter((c) => c.done).length
+  const now = useJapanNow()
+  const today = plans.find((p) => isoDate(p.date) === now.date)
 
   return (
     <nav className="flex h-full flex-col gap-1 overflow-y-auto p-3">
+      {today && (
+        <NavBtn active={view === 'day' && selectedDayId === today.day.id} onClick={() => selectDay(today.day.id)}>
+          <span>📍</span> 오늘 (D{today.index + 1})
+        </NavBtn>
+      )}
       <NavBtn active={view === 'overview'} onClick={() => setView('overview')}>
         <span>📊</span> 전체 일정
       </NavBtn>
@@ -197,8 +204,15 @@ export function DayChips({ plans }: { plans: DayPlan[] }) {
   const selectedDayId = useStore((s) => s.selectedDayId)
   const selectDay = useStore((s) => s.selectDay)
   const chip = (active: boolean) => cx('shrink-0 rounded-lg border px-2.5 py-1 text-xs font-semibold', active ? 'border-violet-400 bg-white' : 'border-stone-200 bg-white/60')
+  const now = useJapanNow()
+  const today = plans.find((p) => isoDate(p.date) === now.date)
   return (
     <div className="flex gap-1.5 overflow-x-auto border-b border-stone-200 px-3 py-2 xl:hidden">
+      {today && (
+        <button className={chip(view === 'day' && selectedDayId === today.day.id)} onClick={() => selectDay(today.day.id)}>
+          📍 오늘
+        </button>
+      )}
       <button className={chip(view === 'overview')} onClick={() => setView('overview')}>
         📊 전체
       </button>

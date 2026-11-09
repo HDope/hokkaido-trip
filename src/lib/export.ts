@@ -1,6 +1,6 @@
 import type { LegMode, Place, Trip } from '../types'
 import { decodePolyline } from './geo'
-import { hoursForDay } from './hours'
+import { hoursAsOf, hoursForDay } from './hours'
 import { MEAL_LABEL, type DayPlan, type Warning, tollText } from './schedule'
 import { fmtDate, fmtDur, fmtHM, fmtKm } from './time'
 import { DAY_COLORS, KIND_ICON } from '../ui'
@@ -147,7 +147,8 @@ export function buildMobileHtml(trip: Trip, plans: DayPlan[]): string {
 <div class="time">${fmtHM(s.arrive)}<small>${s.stop.stay ? fmtHM(s.depart) : ''}</small></div>
 <div class="body"><div class="name"><span class="num" style="background:${color}">${i + 1}</span>${s.meal ? `<span class="meal">${MEAL_LABEL[s.meal]}</span> ` : ''}${KIND_ICON[pl.kind]} ${esc(pl.name)}</div>
 ${pl.nameLocal ? `<div class="local">${esc(pl.nameLocal)}</div>` : ''}
-${pl.hours || pl.alwaysOpen || (pl.kind !== 'hotel' && pl.kind !== 'airport') ? `<div class="meta">🕘 ${esc(hoursForDay(pl, p.weekday))}${s.wait ? ` · 대기 ${fmtDur(s.wait)}` : ''}</div>` : ''}
+${pl.hours || pl.alwaysOpen || (pl.kind !== 'hotel' && pl.kind !== 'airport') ? `<div class="meta">🕘 ${esc(hoursForDay(pl, p.weekday))}${hoursAsOf(pl, p.date) ? ` (${esc(hoursAsOf(pl, p.date)!)})` : ''}${s.wait ? ` · 대기 ${fmtDur(s.wait)}` : ''}</div>` : ''}
+${s.stop.booking ? `<div class="meta">${s.stop.booking.done ? '✅ 예약함' : '📅 예약 필요'}${s.stop.booking.meet ? ` · ${esc(s.stop.booking.meet)} 집합` : ''}${s.stop.booking.ref ? ` · 예약번호 ${esc(s.stop.booking.ref)}` : ''}</div>` : ''}
 ${pl.phone ? `<div class="meta">☎ <a href="tel:${esc(pl.phone)}">${esc(pl.phone)}</a> <span class="hint">렌터카 내비에 전화번호 입력</span></div>` : ''}
 ${pl.mapcode ? `<div class="meta">맵코드 <b>${esc(pl.mapcode)}</b></div>` : ''}
 ${s.stop.note ? `<div class="note">📝 ${esc(s.stop.note)}</div>` : ''}

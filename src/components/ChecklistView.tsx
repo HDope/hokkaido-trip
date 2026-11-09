@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStore } from '../store'
 import { uid } from '../lib/time'
 import { cx } from './common'
+import { BookingCalendar } from './Bookings'
 
 const TIPS: [string, string][] = [
   ['🚗 좌측통행', '운전석이 오른쪽, 깜빡이·와이퍼 레버가 반대예요. 첫날은 공항 주변에서 천천히 적응하세요.'],
@@ -21,7 +22,8 @@ export function ChecklistView() {
   const done = trip.checklist.filter((c) => c.done).length
   return (
     <div className="px-5 py-5">
-      <h2 className="text-xl font-bold">준비 체크리스트</h2>
+      <BookingCalendar />
+      <h2 className="mt-8 text-xl font-bold">준비 체크리스트</h2>
       <p className="mt-0.5 text-sm text-stone-500">
         {done}/{trip.checklist.length} 완료
       </p>

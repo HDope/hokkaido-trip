@@ -1,8 +1,9 @@
 import type { Day, LegMode, Place, PlaceKind, RouteLeg, Stop, Trip } from '../types'
+import { haversineMeters } from './geo'
 import { checkHours, type HoursCheck } from './hours'
 import { resolveLeg, type ResolvedLeg } from './routing'
 import { sunTimes } from './sun'
-import { dayDate, fmtDur, fmtHM, parseHM, WEEKDAYS_KO } from './time'
+import { dayDate, fmtDur, fmtHM, fmtKm, parseHM, WEEKDAYS_KO } from './time'
 
 export type Level = 'critical' | 'serious' | 'warning' | 'info'
 
@@ -49,6 +50,12 @@ export const BREAKFAST_LABEL = '🍳 아침'
 /** 조식에 잡는 시간과, 먹고 나서 출발할 때까지의 준비 시간(분) */
 const BREAKFAST_MIN = 45
 const BREAKFAST_READY = 10
+/** 차에서 이보다 멀어지면 차를 가지러 걸어가야 한다 */
+export const CAR_LEFT_M = 400
+/** 해 진 뒤 이 시간 넘게 걸으면 알려준다(분) */
+const NIGHT_WALK_MIN = 20
+/** 시음이 있는 곳 */
+const ALCOHOL = /와이너리|도멘|양조|주조|맥주|비어|ワイナリー|ワイン|ドメーヌ|酒造|ビール|winery|domaine|brewery/i
 
 export type DayPlan = {
   day: Day
@@ -156,6 +163,7 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
   let stayMin = 0
   let waitMin = 0
   let pendingLegs = 0
+  let car = startPlace // 차가 지금 어디에 있는지
 
   const makeLeg = (from: Place, to: Place, mode: LegMode, manual: number | undefined, depart: number): LegPlan => {
     const resolved = resolveLeg(routes, from.location, to.location, mode, manual, s, hasGoogle)
@@ -190,7 +198,20 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
         })
       }
     }
+    if (mode === 'WALK' && minutes >= NIGHT_WALK_MIN && sun && depart >= sun.sunset) {
+      warnings.push({ level: 'info', text: `해 진 뒤 ${fmtDur(minutes)} 걷는 구간이에요 — 택시나 셔틀도 생각해 보세요` })
+    }
     return { from, to, mode, resolved, minutes, buffer, meters, tollYen: legToll, start: depart, end, confirmed, warnings }
+  }
+
+  /** 운전을 시작하는 곳에 차가 있는지 보고, 차를 옮긴다 */
+  const moveCar = (leg: LegPlan, to: Place | undefined) => {
+    if (leg.mode !== 'DRIVE') return
+    if (car) {
+      const away = haversineMeters(car.location, leg.from.location)
+      if (away > CAR_LEFT_M) leg.warnings.push({ level: 'warning', text: `차는 ${shortName(car.name)}에 있어요 (${fmtKm(away)} 떨어짐) — 차를 가지러 가는 구간을 넣으세요` })
+    }
+    car = to ?? car
   }
 
   const stops: StopPlan[] = day.stops.map((stop) => {
@@ -199,6 +220,7 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
     let leg: LegPlan | undefined
     if (prev && place) {
       leg = makeLeg(prev, place, stop.legMode ?? 'DRIVE', stop.manualMinutes, t)
+      moveCar(leg, place)
       t = leg.end
     }
     let arrive = t
@@ -212,12 +234,15 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
         warnings.push({ level: 'serious', text: `고정 시각 ${stop.fixedTime}보다 ${fmtDur(arrive - fixed)} 늦게 도착해요` })
       }
     }
+    const meet = parseHM(stop.booking?.meet)
+    if (meet != null && arrive > meet) warnings.push({ level: 'serious', text: `집합 ${stop.booking!.meet}보다 ${fmtDur(arrive - meet)} 늦게 도착해요` })
     const depart = arrive + stop.stay
     const hours = place ? checkHours(place, weekday, arrive, depart) : ({ status: 'unknown' } as HoursCheck)
     if (place) warnings.push(...placeWarnings(place, hours, weekday, stop, day.id))
     if (place && leg?.mode === 'DRIVE') {
       if (place.parking?.status === 'none') warnings.push({ level: 'warning', text: `차를 댈 곳이 없어요${place.parking.fee ? ` (${place.parking.fee})` : ''} — 근처 주차장을 정하거나 이동 수단을 바꾸세요` })
       else if (!place.parking) warnings.push({ level: 'info', text: '주차 정보 미확인', fix: { kind: 'openPlace', placeId: place.id, label: '주차 입력' } })
+      if (!place.phone && !place.mapcode) warnings.push({ level: 'info', text: '내비에 넣을 전화번호·맵코드가 없어요', fix: { kind: 'openPlace', placeId: place.id, label: '입력' } })
     }
     waitMin += wait
     stayMin += stop.stay
@@ -229,15 +254,26 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
   let endLeg: LegPlan | undefined
   if (lodging && prev && prev.id !== lodging.id) {
     endLeg = makeLeg(prev, lodging, day.endLegMode ?? 'DRIVE', day.endManualMinutes, t)
+    moveCar(endLeg, lodging)
     t = endLeg.end
   }
   const end = t
+
+  // 시음이 있는 곳이나 저녁 뒤에 운전이 남아 있으면 운전자에게 알려준다
+  stops.forEach((sp, i) => {
+    if (!sp.place || (sp.meal !== 'dinner' && (sp.place.kind === 'hotel' || !ALCOHOL.test(`${sp.place.name} ${sp.place.nameLocal ?? ''}`)))) return
+    const drivesLater = stops.slice(i + 1).some((x) => x.leg?.mode === 'DRIVE' && x.leg.meters >= CAR_LEFT_M) || (endLeg?.mode === 'DRIVE' && endLeg.meters >= CAR_LEFT_M)
+    if (drivesLater) sp.warnings.push({ level: 'info', text: '이 뒤에 운전이 있어요. 운전자는 한 모금도 안 돼요' })
+  })
 
   const warnings: Warning[] = []
   if (driveMin > s.dailyDriveLimit) {
     warnings.push({ level: 'serious', text: `하루 운전 ${fmtDur(driveMin)} — 너무 길어요. 일정을 나누거나 숙소를 옮겨보세요` })
   } else if (driveMin > s.dailyDriveWarn) {
     warnings.push({ level: 'warning', text: `하루 운전 ${fmtDur(driveMin)} — 신혼여행치고 빡빡해요` })
+  }
+  if (lodging && car && haversineMeters(car.location, lodging.location) > 500) {
+    warnings.push({ level: 'warning', text: `차가 ${shortName(car.name)}에 남아 있어요 — 숙소로 가져오는 구간이 없어요` })
   }
   const checkedInEarlier = !!lodging && day.stops.some((x) => x.placeId === lodging.id)
   if (lodging && end > 21 * 60 && !checkedInEarlier) {

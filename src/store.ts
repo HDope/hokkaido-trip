@@ -4,11 +4,16 @@ import type { RegionId, ThemeId } from './candidates'
 import { createSeedTrip } from './seed'
 import { clearConnectHash, cloudBackend, consumeConnectLink, isAccessProblem, readCloudConfig, serverBackend, type Backend, type Revisions, type Snapshot } from './lib/backend'
 import { changeSummary, describeChanges } from './lib/revisions'
+import { mergeTrips } from './lib/merge'
+import { todayIndex } from './lib/today'
 
 const LS_TRIP = 'hk-trip-backup'
 const LS_TRIP_AT = 'hk-trip-backup-at'
 const LS_KEY = 'hk-gmaps-key'
 const HISTORY_LIMIT = 60
+/** 같은 칸을 이 시간 안에 이어서 고치면 되돌리기 한 번으로 묶는다 */
+const MERGE_EDITS_MS = 1500
+const SS_OPENED = 'hk-opened'
 
 export type View = 'day' | 'overview' | 'candidates' | 'places' | 'checklist' | 'compare'
 
@@ -22,6 +27,7 @@ type State = {
   routes: Record<string, RouteLeg>
   needConnect?: { error?: string } // 웹 버전인데 아직 일정 저장소와 연결되지 않음
   offlineSince?: string // 인터넷이 끊겨 저장해 둔 일정을 보여주는 중이면, 그 일정을 받은 시각
+  offlineReason?: 'network' | 'access' // 끊긴 이유: 인터넷, 또는 토큰이 막힘
   preview?: Preview
   showVersions: boolean
   offerHomeScreen: boolean // 아이폰에서 연결 링크로 처음 열었을 때 홈 화면 추가 안내
@@ -48,7 +54,8 @@ type State = {
   candPanId?: string // 지도를 옮겨 보여줄 후보
 
   load: () => Promise<void>
-  mutate: (fn: (t: Trip) => void) => void
+  mutate: (fn: (t: Trip) => void, mergeKey?: string) => void
+  reconnect: () => void
   undo: () => void
   redo: () => void
   setRoute: (key: string, leg: RouteLeg) => void
@@ -119,9 +126,9 @@ export const useStore = create<State>((set, get) => ({
       reached = true
     } catch (e) {
       if (cloud) {
-        const cached = isAccessProblem(e) ? null : readCachedTrip()
+        const cached = readCachedTrip()
         if (cached) {
-          enterOffline(cached.trip, cached.at)
+          enterOffline(cached.trip, cached.at, isAccessProblem(e) ? 'access' : 'network')
           return
         }
         set({ needConnect: { error: e instanceof TypeError ? '인터넷에 연결되어 있지 않아요. 연결되면 다시 열어주세요' : (e as Error).message } })
@@ -140,7 +147,7 @@ export const useStore = create<State>((set, get) => ({
     }
     const isNew = !trip
     if (!trip) trip = createSeedTrip()
-    const routes = snapshot?.routes ?? trip.routeCache ?? {}
+    const routes = withoutErrors(snapshot?.routes ?? trip.routeCache ?? {})
     set({
       trip,
       routes,
@@ -162,20 +169,27 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  mutate(fn) {
+  mutate(fn, mergeKey) {
     const cur = get().trip
     if (!cur || isReadOnly(true)) return
     const next = structuredClone(cur)
     fn(next)
     next.updatedAt = new Date().toISOString()
-    set({ trip: next, past: [...get().past.slice(-HISTORY_LIMIT), cur], future: [] })
+    // 글자를 칠 때마다 되돌리기가 쌓이지 않게, 같은 칸을 이어서 고치면 한 번으로 묶는다
+    const now = Date.now()
+    const sameEdit = !!mergeKey && lastEdit?.key === mergeKey && now - lastEdit.at < MERGE_EDITS_MS && get().past.length > 0
+    lastEdit = mergeKey ? { key: mergeKey, at: now } : undefined
+    set({ trip: next, past: sameEdit ? get().past : [...get().past.slice(-HISTORY_LIMIT), cur], future: [] })
     scheduleSave(true)
   },
+
+  reconnect: () => set({ needConnect: { error: '접속 토큰이 막혔어요. 연결 링크로 다시 열거나 새 토큰을 넣어 주세요' } }),
 
   undo() {
     const { past, trip, future } = get()
     if (!past.length || !trip || isReadOnly()) return
     const prev = past[past.length - 1]
+    lastEdit = undefined
     set({ trip: prev, past: past.slice(0, -1), future: [trip, ...future] })
     scheduleSave(true)
   },
@@ -190,7 +204,7 @@ export const useStore = create<State>((set, get) => ({
 
   setRoute(key, leg) {
     set({ routes: { ...get().routes, [key]: leg } })
-    scheduleSave()
+    if (!leg.error) scheduleSave() // 실패한 구간은 이 기기에서만 알고 저장하지 않는다
   },
 
   clearRoutes(filter) {
@@ -241,6 +255,16 @@ export const useStore = create<State>((set, get) => ({
 
 /** 주소의 #d3, #overview 등으로 보던 화면을 기억 (새로고침해도 유지) */
 function viewFromHash(trip: Trip): Pick<State, 'view' | 'selectedDayId'> {
+  // 여행 중에는 앱을 새로 열 때 오늘부터 보여준다. 같은 창에서 새로고침하면 보던 곳을 유지한다
+  let firstOpen = false
+  try {
+    firstOpen = !sessionStorage.getItem(SS_OPENED)
+    sessionStorage.setItem(SS_OPENED, '1')
+  } catch {
+    /* 저장이 막혀 있으면 주소대로 연다 */
+  }
+  const today = trip.days[todayIndex(trip)]?.id
+  if (firstOpen && today) return { view: 'day', selectedDayId: today }
   const h = location.hash.slice(1)
   const m = /^d(\d+)$/.exec(h)
   const first = trip.days[0]?.id
@@ -267,10 +291,22 @@ let saveAgain = false
 let stash: { trip: Trip; past: Trip[]; future: Trip[] } | null = null
 let lastSaved: Trip | null = null // 저장소에 있는 마지막 일정 (변경 기록의 제목을 만드는 기준)
 let nextMessage: string | undefined
+let lastEdit: { key: string; at: number } | undefined
+
+/** 실패한 구간은 저장하지 않는다 (다시 열면 새로 받는다) */
+function withoutErrors(routes: Record<string, RouteLeg>): Record<string, RouteLeg> {
+  return Object.fromEntries(Object.entries(routes).filter(([, leg]) => !leg.error))
+}
 
 function isReadOnly(tell = false): boolean {
   const st = useStore.getState()
-  const reason = st.preview ? '예전 버전을 보는 중이라 고칠 수 없어요. 고치려면 먼저 이 버전으로 바꾸세요' : st.offlineSince ? '인터넷이 끊겨 있어 고칠 수 없어요. 다시 연결되면 고칠 수 있어요' : undefined
+  const reason = st.preview
+    ? '예전 버전을 보는 중이라 고칠 수 없어요. 고치려면 먼저 이 버전으로 바꾸세요'
+    : st.offlineReason === 'access'
+      ? '접속 토큰이 막혀 있어 고칠 수 없어요. 다시 연결하면 고칠 수 있어요'
+      : st.offlineSince
+        ? '인터넷이 끊겨 있어 고칠 수 없어요. 다시 연결되면 고칠 수 있어요'
+        : undefined
   if (reason && tell) useStore.setState({ toast: { text: reason, id: Date.now() } })
   return !!reason
 }
@@ -282,7 +318,7 @@ function cacheForOffline() {
   const trip = stash?.trip ?? st.trip
   if (!trip) return
   try {
-    localStorage.setItem(LS_TRIP, JSON.stringify({ ...trip, routeCache: st.routes }))
+    localStorage.setItem(LS_TRIP, JSON.stringify({ ...trip, routeCache: withoutErrors(st.routes) }))
     localStorage.setItem(LS_TRIP_AT, new Date().toISOString())
   } catch {
     /* 용량 초과 등은 무시 — 저장소 쪽이 기본 */
@@ -300,7 +336,7 @@ function readCachedTrip(): { trip: Trip; at: string } | null {
 }
 
 /** 저장해 둔 일정을 보기 전용으로 보여주고, 연결되면 최신본으로 돌아간다 */
-function enterOffline(trip: Trip, at: string) {
+function enterOffline(trip: Trip, at: string, reason: 'network' | 'access' = 'network') {
   useStore.setState({
     trip,
     routes: trip.routeCache ?? {},
@@ -308,10 +344,12 @@ function enterOffline(trip: Trip, at: string) {
     backendKind: backend?.kind,
     saveStatus: 'offline',
     offlineSince: at || new Date().toISOString(),
+    offlineReason: reason,
     // 구글 지도와 경로도 인터넷이 필요하다. 저장된 키는 그대로 두고 화면에서만 끈다
     apiKey: '',
     googleStatus: 'none',
   })
+  if (reason === 'access') return // 토큰을 바꾸기 전에는 다시 시도해도 소용없다
   const retry = async () => {
     try {
       const remote = await backend?.latest()
@@ -327,6 +365,7 @@ function enterOffline(trip: Trip, at: string) {
         selectedDayId: remote.trip.days.some((d) => d.id === st.selectedDayId) ? st.selectedDayId : remote.trip.days[0]?.id,
         saveStatus: 'saved',
         offlineSince: undefined,
+        offlineReason: undefined,
         apiKey: key,
         googleStatus: key ? 'unknown' : 'none',
         toast: { text: '다시 연결돼서 최신 일정을 불러왔어요', id: Date.now() },
@@ -431,7 +470,7 @@ async function save() {
   useStore.setState({ saveStatus: 'saving' })
   try {
     const message = sent.trip ? (nextMessage ?? changeSummary(lastSaved ? describeChanges(lastSaved, trip) : [])) : undefined
-    const result = await backend.push({ trip, routes }, sent, message)
+    const result = await backend.push({ trip, routes: withoutErrors(routes) }, sent, message)
     if (result === 'conflict') {
       tripDirty = tripDirty || sent.trip
       routesDirty = routesDirty || sent.routes
@@ -459,7 +498,7 @@ async function save() {
 /** 다른 기기의 최신 내용을 화면에 반영 */
 function applyRemote(remote: Snapshot) {
   const st = useStore.getState()
-  const routes = { ...st.routes, ...remote.routes }
+  const routes = { ...st.routes, ...withoutErrors(remote.routes) }
   const current = stash?.trip ?? st.trip
   lastSaved = remote.trip
   if (current && remote.trip.updatedAt === current.updatedAt) {
@@ -490,16 +529,23 @@ async function resolveConflict() {
   const remote = await backend!.latest()
   if (!remote) throw new Error('최신본을 읽지 못했어요')
   const st = useStore.getState()
-  if (tripDirty && st.trip) {
-    // 양쪽이 동시에 일정을 고쳤다면 최신본을 쓰고, 내 수정은 되돌리기로 살릴 수 있게 남긴다
-    tripDirty = false
-    const local = st.trip
-    applyRemote(remote)
-    useStore.setState({
-      past: [local],
-      saveStatus: 'saved',
-      toast: { text: '다른 기기 수정과 겹쳐 최신본을 불러왔어요. 방금 수정은 되돌리기(↶)로 복구할 수 있어요', id: Date.now() },
-    })
+  const local = stash?.trip ?? st.trip
+  if (tripDirty && local && lastSaved) {
+    // 양쪽이 동시에 고쳤다면 서로 다른 항목은 둘 다 살리고, 합친 일정을 다시 저장한다
+    const { trip, conflicts } = mergeTrips(lastSaved, local, remote.trip)
+    lastSaved = remote.trip
+    const routes = { ...st.routes, ...withoutErrors(remote.routes) }
+    const toast = {
+      text: conflicts ? `다른 기기와 같은 곳을 고쳐서 ${conflicts}건은 다른 기기 내용을 따랐어요. 내 수정은 되돌리기(↶)로 볼 수 있어요` : '다른 기기에서 고친 내용과 합쳤어요',
+      id: Date.now(),
+    }
+    if (stash) {
+      stash = { trip, past: [], future: [] }
+      useStore.setState({ routes, saveStatus: 'dirty', toast })
+    } else {
+      useStore.setState({ trip, routes, past: conflicts ? [local] : [], future: [], saveStatus: 'dirty', toast })
+    }
+    saveTimer = setTimeout(save, 300)
     return
   }
   applyRemote(remote)

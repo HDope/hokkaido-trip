@@ -89,9 +89,23 @@ export type Stop = {
   meal?: MealMark // 비우면 식당을 도착 시각으로 판단
   picks?: string[] // 지금 장소를 고른 사람 id
   alts?: StopAlt[] // 다른 후보들
+  booking?: Booking
 }
 
 export type MealMark = 'lunch' | 'dinner' | 'none'
+
+/** 예약 정보. 날짜는 방문일 기준 며칠 전으로 적어 두어 일정을 옮겨도 따라간다 */
+export type Booking = {
+  meet?: string // 집합·시작 시각 "10:30". 넣어 두면 늦게 도착할 때 경고한다
+  opensDaysBefore?: number // 며칠 전부터 예약할 수 있는지
+  opensTime?: string
+  closesDaysBefore?: number // 며칠 전까지 예약할 수 있는지 (0이면 당일)
+  closesTime?: string
+  how?: string // 예약 방법
+  note?: string
+  ref?: string // 예약번호
+  done?: boolean
+}
 
 export type Day = {
   id: string

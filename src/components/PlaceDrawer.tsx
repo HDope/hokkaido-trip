@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useStore } from '../store'
 import { useGoogle, usePlans } from '../hooks'
 import type { Place, PlaceKind } from '../types'
-import { fromSimpleWeek, toSimpleWeek, weekLines, type SimpleWeek } from '../lib/hours'
+import { fromSimpleWeek, hoursAsOf, toSimpleWeek, weekLines, type SimpleWeek } from '../lib/hours'
 import { placeUrl } from '../lib/export'
 import { verifyPlace } from '../lib/verify'
 import { fmtDate, fmtHM, parseHM, WEEKDAYS_KO } from '../lib/time'
@@ -62,6 +62,7 @@ function PlaceBody({ place }: { place: Place }) {
     [...p.stops.filter((s) => s.place?.id === place.id).map((s) => ({ p, arrive: s.arrive, lodging: false })), ...(p.lodging?.id === place.id ? [{ p, arrive: p.end, lodging: true }] : [])],
   )
   const visitDays = new Set(visits.map((v) => v.p.weekday))
+  const asOf = visits[0] ? hoursAsOf(place, visits[0].p.date) : undefined
 
   async function verify() {
     setBusy(true)
@@ -208,7 +209,11 @@ function PlaceBody({ place }: { place: Place }) {
           </table>
         )}
         {place.hours?.note && <p className="mt-1.5 text-xs text-stone-500">※ {place.hours.note}</p>}
-        <p className="mt-1.5 text-xs text-stone-400">구글 영업시간은 '평상시' 기준이에요. 계절 운영·임시휴무는 출발 1~2주 전에 다시 확인하세요.</p>
+        {asOf ? (
+          <p className="mt-1.5 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-900">구글이 알려준 {asOf} 시간이라 여행 때와 다를 수 있어요. 공식 시간을 확인했으면 "직접 편집"으로 고쳐 두세요. 직접 고친 시간은 구글로 다시 확인해도 그대로예요.</p>
+        ) : (
+          <p className="mt-1.5 text-xs text-stone-400">구글 영업시간은 '평상시' 기준이에요. 계절 운영·임시휴무는 출발 1~2주 전에 다시 확인하세요.</p>
+        )}
       </section>
 
       {place.kind === 'hotel' && (

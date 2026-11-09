@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, pointerWithin, useSensor, useSensors, type CollisionDetection, type DragEndEvent, type PointerSensorOptions } from '@dnd-kit/core'
 import { useStore } from './store'
-import { usePlans } from './hooks'
+import { usePlans, useWideScreen } from './hooks'
 import { useRouteManager } from './lib/useRouteManager'
 import { moveStopToDay, reorderStops } from './actions'
 import { TopBar, Sidebar, DayChips } from './components/Shell'
@@ -110,6 +110,9 @@ function Planner() {
   const undo = useStore((s) => s.undo)
   const redo = useStore((s) => s.redo)
   const [mobileMap, setMobileMap] = useState(false)
+  // 폰에서는 지도를 처음 열 때 불러온다. 한 번 열면 그대로 둔다
+  const wide = useWideScreen()
+  const [mapOpened, setMapOpened] = useState(false)
   const plan = plans.find((p) => p.day.id === selectedDayId) ?? plans[0]
 
   useEffect(() => {
@@ -157,14 +160,17 @@ function Planner() {
         </main>
         {view !== 'compare' && (
           <section className={cx('min-w-0 flex-1', mobileMap ? 'block' : 'hidden md:block')}>
-            <MapPanel plans={plans} />
+            {(wide || mapOpened) && <MapPanel plans={plans} />}
           </section>
         )}
       </div>
       {view !== 'compare' && (
         <button
           className="fixed right-4 bottom-4 z-[800] rounded-full bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white shadow-lg md:hidden"
-          onClick={() => setMobileMap(!mobileMap)}
+          onClick={() => {
+            setMobileMap(!mobileMap)
+            setMapOpened(true)
+          }}
         >
           {mobileMap ? '📋 일정' : '🗺️ 지도'}
         </button>

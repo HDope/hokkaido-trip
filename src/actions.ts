@@ -18,6 +18,14 @@ const DEFAULT_STAY: Record<PlaceKind, number> = {
   other: 45,
 }
 
+/** 글자나 숫자를 치는 칸. 이어서 고치면 되돌리기 한 번으로 묶는다 */
+const TYPED_FIELDS = new Set(['note', 'name', 'nameLocal', 'phone', 'mapcode', 'checkNote', 'breakfastNote', 'manualMinutes', 'endManualMinutes', 'defaultStay', 'parking', 'booking'])
+
+const typedKey = (scope: string, patch: object) => {
+  const keys = Object.keys(patch)
+  return keys.length === 1 && TYPED_FIELDS.has(keys[0]) ? `${scope}:${keys[0]}` : undefined
+}
+
 export function defaultStay(p: Place) {
   return p.defaultStay ?? DEFAULT_STAY[p.kind]
 }
@@ -76,7 +84,7 @@ export function updateStop(dayId: string, stopId: string, patch: Partial<Stop>) 
     if (!s) return
     Object.assign(s, patch)
     for (const k of Object.keys(patch) as (keyof Stop)[]) if (patch[k] === undefined) delete s[k]
-  })
+  }, typedKey(`stop:${stopId}`, patch))
 }
 
 export function removeStop(dayId: string, stopId: string, toWishlist = false) {
@@ -149,7 +157,7 @@ export function updateAlt(dayId: string, stopId: string, altId: string, patch: P
     if (!a) return
     Object.assign(a, patch)
     for (const k of Object.keys(patch) as (keyof StopAlt)[]) if (patch[k] === undefined) delete a[k]
-  })
+  }, typedKey(`alt:${altId}`, patch))
 }
 
 /** 후보에서 뺀다. 다른 곳에 안 쓰이면 장소함으로 보낸다 */
@@ -202,7 +210,7 @@ export function updateDay(dayId: string, patch: Partial<Day>) {
     if (!d) return
     Object.assign(d, patch)
     for (const k of Object.keys(patch) as (keyof Day)[]) if (patch[k] === undefined) delete d[k]
-  })
+  }, typedKey(`day:${dayId}`, patch))
 }
 
 export function updatePlace(placeId: string, patch: Partial<Place>) {
@@ -211,7 +219,7 @@ export function updatePlace(placeId: string, patch: Partial<Place>) {
     if (!p) return
     Object.assign(p, patch)
     for (const k of Object.keys(patch) as (keyof Place)[]) if (patch[k] === undefined) delete p[k]
-  })
+  }, typedKey(`place:${placeId}`, patch))
 }
 
 export function deletePlace(placeId: string) {

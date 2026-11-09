@@ -1,13 +1,23 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import type { DayPlan, LegPlan } from '../lib/schedule'
 import { decodePolyline } from '../lib/geo'
 import { dayColor } from '../ui'
 import { CANDIDATES, filterCandidates, GROUP, REGIONS, THEMES, THEME_BY_ID, type Candidate, type RegionId } from '../candidates'
 import { GoogleMap } from './map/GoogleMap'
-import { LeafletMap } from './map/LeafletMap'
 import type { MapMarker, MapPath } from './map/types'
 import { cx } from './common'
+
+function MapMessage({ text }: { text: string }) {
+  return <div className="flex h-full items-center justify-center bg-stone-100 px-6 text-center text-sm text-stone-500">{text}</div>
+}
+
+// 구글 지도를 못 쓸 때만 필요한 지도라 그때 불러온다
+const LeafletMap = lazy(() =>
+  import('./map/LeafletMap')
+    .then((m) => ({ default: m.LeafletMap }))
+    .catch(() => ({ default: () => <MapMessage text="지도를 불러오지 못했어요. 인터넷을 확인한 뒤 다시 열어주세요" /> })),
+)
 
 function legPath(l: LegPlan, color: string, dim: boolean): MapPath {
   const r = l.resolved
@@ -56,6 +66,7 @@ export function MapPanel({ plans }: { plans: DayPlan[] }) {
   const focusNonce = useStore((s) => s.focusNonce)
   const notify = useStore((s) => s.notify)
   const [jsFailed, setJsFailed] = useState(false)
+  const offline = useStore((s) => !!s.offlineSince)
   const [showOthers, setShowOthers] = useState(false)
   const candThemes = useStore((s) => s.candThemes)
   const candRegion = useStore((s) => s.candRegion)
@@ -147,7 +158,9 @@ export function MapPanel({ plans }: { plans: DayPlan[] }) {
 
   return (
     <div className="relative h-full w-full">
-      {useGoogleMap ? (
+      {offline ? (
+        <MapMessage text="지도는 인터넷에 연결되면 보여요. 일정과 시간은 그대로 볼 수 있어요" />
+      ) : useGoogleMap ? (
         <GoogleMap
           apiKey={apiKey}
           onAuthFailure={() => {
@@ -162,7 +175,9 @@ export function MapPanel({ plans }: { plans: DayPlan[] }) {
           onMarkerClick={onMarkerClick}
         />
       ) : (
-        <LeafletMap markers={markers} paths={paths} fitKey={fitKey} fitPadding={fitPadding} focus={focus} onMarkerClick={onMarkerClick} />
+        <Suspense fallback={<MapMessage text="지도를 불러오는 중…" />}>
+          <LeafletMap markers={markers} paths={paths} fitKey={fitKey} fitPadding={fitPadding} focus={focus} onMarkerClick={onMarkerClick} />
+        </Suspense>
       )}
       {isCand && (
         <button

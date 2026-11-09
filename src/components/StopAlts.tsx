@@ -4,7 +4,7 @@ import { useGoogle } from '../hooks'
 import type { Place, Stop, StopAlt } from '../types'
 import { addAlt, promoteAlt, removeAlt, togglePick, updateAlt, upsertPlace } from '../actions'
 import { searchNear, toPlaceFields, type GPlace } from '../lib/google'
-import { checkHours, hoursForDay } from '../lib/hours'
+import { checkHours, hoursAsOf, hoursForDay } from '../lib/hours'
 import { haversineMeters } from '../lib/geo'
 import { MODE_ICON } from '../lib/routing'
 import { shortName } from '../lib/schedule'
@@ -76,7 +76,7 @@ export function AltNav({ count, active, onGo, picksOf }: { count: number; active
 const signed = (min: number) => (Math.abs(min) < 1 ? '그대로' : `${min > 0 ? '+' : '−'}${fmtDur(Math.abs(min))}`)
 
 /** 후보 한 장: 이 후보로 바꾸면 몇 시에 도착하고 하루가 어떻게 달라지는지 */
-export function AltSlide({ dayId, stopId, alt, preview, weekday }: { dayId: string; stopId: string; alt: StopAlt; preview?: AltPreview; weekday: number }) {
+export function AltSlide({ dayId, stopId, alt, preview, weekday, date }: { dayId: string; stopId: string; alt: StopAlt; preview?: AltPreview; weekday: number; date: Date }) {
   const trip = useStore((s) => s.trip)!
   const openPlace = useStore((s) => s.openPlace)
   const focusPlace = useStore((s) => s.focusPlace)
@@ -132,7 +132,10 @@ export function AltSlide({ dayId, stopId, alt, preview, weekday }: { dayId: stri
           </div>
         )}
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px]">
-          <span className={cx('rounded-md px-1.5 py-0.5', open ? 'bg-emerald-50 text-emerald-800' : 'bg-stone-100 text-stone-600')}>🕘 {hoursForDay(place, weekday)}</span>
+          <span className={cx('rounded-md px-1.5 py-0.5', hoursAsOf(place, date) ? 'bg-amber-50 text-amber-900' : open ? 'bg-emerald-50 text-emerald-800' : 'bg-stone-100 text-stone-600')}>
+            🕘 {hoursForDay(place, weekday)}
+            {hoursAsOf(place, date) && <span className="font-semibold"> · {hoursAsOf(place, date)}</span>}
+          </span>
           {place.rating && (
             <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-600">
               ★ {place.rating.toFixed(1)}
