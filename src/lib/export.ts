@@ -1,9 +1,10 @@
 import type { LegMode, Place, Trip } from '../types'
 import { decodePolyline } from './geo'
 import { hoursAsOf, hoursForDay } from './hours'
-import { MEAL_LABEL, type DayPlan, type Warning, tollText } from './schedule'
-import { fmtDate, fmtDur, fmtHM, fmtKm } from './time'
-import { DAY_COLORS, KIND_ICON } from '../ui'
+import { MEAL_LABEL, MEAL_WORD, type DayPlan, type Warning, tollText } from './schedule'
+import { fmtDate, fmtDur, fmtHM, fmtKm, isoDate, WEEKDAYS_KO } from './time'
+import { DAY_COLORS, KIND_ICON, KIND_LABEL } from '../ui'
+import { buildXlsx } from './xlsx'
 import { travelersOf } from './people'
 
 const TRAVEL: Record<LegMode, string> = { DRIVE: 'driving', WALK: 'walking', TRANSIT: 'transit', MANUAL: 'driving' }
@@ -205,7 +206,27 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 </body></html>`
 }
 
-export function download(filename: string, content: string, mime: string) {
+/** 엑셀로 내보낼 표: 일자, 시간, 장소를 방문 순서대로 */
+export function scheduleRows(plans: DayPlan[]): string[][] {
+  const rows = [['일차', '날짜', '요일', '시작', '끝', '장소', '현지 이름', '구분', '메모']]
+  for (const p of plans) {
+    const day = [`D${p.index + 1}`, isoDate(p.date), WEEKDAYS_KO[p.weekday]]
+    if (p.breakfast) rows.push([...day, fmtHM(p.breakfast.start), fmtHM(p.breakfast.end), p.breakfast.place.name, p.breakfast.place.nameLocal ?? '', '아침', p.breakfast.place.breakfastNote ?? ''])
+    for (const s of p.stops) {
+      if (!s.place) continue
+      rows.push([...day, fmtHM(s.arrive), fmtHM(s.depart), s.place.name, s.place.nameLocal ?? '', s.meal ? MEAL_WORD[s.meal] : KIND_LABEL[s.place.kind], s.stop.note ?? ''])
+    }
+    if (p.lodging) rows.push([...day, fmtHM(p.end), '', p.lodging.name, p.lodging.nameLocal ?? '', '숙소 도착', ''])
+  }
+  return rows
+}
+
+export function downloadScheduleXlsx(trip: Trip, plans: DayPlan[]) {
+  const widths = [6, 12, 5, 7, 7, 38, 32, 10, 60]
+  download(`홋카이도-일정-${trip.startDate.replace(/-/g, '')}.xlsx`, buildXlsx('일정', scheduleRows(plans), widths), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+}
+
+export function download(filename: string, content: BlobPart, mime: string) {
   const blob = new Blob([content], { type: mime })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

@@ -1,6 +1,6 @@
 import { serializeTrip, useStore } from '../store'
 import { usePlans } from '../hooks'
-import { buildKml, buildMobileHtml, dayPoints, dayRouteUrls, download } from '../lib/export'
+import { buildKml, buildMobileHtml, dayPoints, dayRouteUrls, download, downloadScheduleXlsx } from '../lib/export'
 import { fmtDate } from '../lib/time'
 import { dayColor } from '../ui'
 import { Btn, ExtLink, Modal } from './common'
@@ -26,6 +26,16 @@ function ExportBody() {
   return (
     <div className="space-y-6">
       {pending > 0 && <p className="rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-900">경로 {pending}구간을 아직 계산 중이에요. 끝난 뒤 내보내면 경로선·시간이 더 정확해요.</p>}
+
+      <section className="flex items-center justify-between gap-3 rounded-2xl border border-stone-200 p-4">
+        <div>
+          <h3 className="font-bold">📊 엑셀로 받기</h3>
+          <p className="text-sm text-stone-600">일차, 날짜, 시간, 장소, 메모를 방문 순서대로 한 장에 담아요.</p>
+        </div>
+        <Btn className="shrink-0" onClick={() => downloadScheduleXlsx(trip, plans)}>
+          받기
+        </Btn>
+      </section>
 
       <section className="rounded-2xl border border-stone-200 p-4">
         <h3 className="font-bold">📱 폰용 오프라인 일정표 (추천)</h3>

@@ -61,11 +61,11 @@ export function PlacesView({ plans }: { plans: DayPlan[] }) {
           <span className="text-xs text-stone-500">구글 키 연결 시 영업정보 자동 확인</span>
         )}
       </div>
-      <p className="mt-0.5 text-sm text-stone-500">가고 싶은 곳을 모아두고, 일정 짤 때 꺼내 쓰세요.</p>
+      <p className="mt-0.5 text-sm text-stone-500">가고 싶은 곳을 모아두고, 일정 짤 때 꺼내 쓰세요. 구글에서 찾은 곳은 이름을 치거나 구글맵 링크를 그대로 붙여넣으면 돼요.</p>
 
       <div className="mt-4">
         <PlaceSearch
-          placeholder="가고 싶은 곳 검색해서 장소함에 담기"
+          placeholder="가게 이름 검색 또는 구글맵 링크 붙여넣기"
           onPick={(p, existing) => {
             const id = existing ? p.id : upsertPlace(p)
             mutate((t) => {

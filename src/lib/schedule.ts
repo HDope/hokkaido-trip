@@ -42,13 +42,13 @@ export type StopPlan = {
   meal?: Meal
 }
 
-export type Meal = 'lunch' | 'dinner'
+export type Meal = 'breakfast' | 'lunch' | 'dinner'
 
 export type BreakfastPlan = { place: Place; start: number; end: number; minutes: number; known: boolean }
 
 export const BREAKFAST_LABEL = '🍳 아침'
 /** 조식에 잡는 시간과, 먹고 나서 출발할 때까지의 준비 시간(분) */
-const BREAKFAST_MIN = 45
+export const BREAKFAST_MIN = 45
 const BREAKFAST_READY = 10
 /** 차에서 이보다 멀어지면 차를 가지러 걸어가야 한다 */
 export const CAR_LEFT_M = 400
@@ -64,7 +64,8 @@ export type DayPlan = {
   day: Day
   title: string // 직접 쓴 제목, 없으면 일정에서 만든 제목
   autoTitle: string
-  breakfast?: BreakfastPlan
+  breakfast?: BreakfastPlan // 숙소 조식 (아침 카드를 넣은 날은 없다)
+  morning?: StopPlan // 아침으로 넣은 카드
   lunch?: StopPlan
   dinner?: StopPlan
   index: number
@@ -107,12 +108,15 @@ export function mealOf(stop: Stop, place: Place | undefined, arrive: number): Me
   if (stop.meal === 'none') return undefined
   if (stop.meal) return stop.meal
   if (place?.kind !== 'food') return undefined
-  if (arrive >= 10 * 60 + 30 && arrive < 15 * 60 + 30) return 'lunch'
+  if (arrive < 10 * 60 + 30) return 'breakfast'
+  if (arrive < 15 * 60 + 30) return 'lunch'
   if (arrive >= 16 * 60 + 30 && arrive < 24 * 60) return 'dinner'
   return undefined
 }
 
-export const MEAL_LABEL: Record<Meal, string> = { lunch: '🍱 점심', dinner: '🍽️ 저녁' }
+export const MEAL_LABEL: Record<Meal, string> = { breakfast: BREAKFAST_LABEL, lunch: '🍱 점심', dinner: '🍽️ 저녁' }
+
+export const MEAL_WORD: Record<Meal, string> = { breakfast: '아침', lunch: '점심', dinner: '저녁' }
 
 export const shortName = (name: string) => name.replace(/\s*[(（].*?[)）]\s*/g, ' ').trim() || name
 
@@ -325,7 +329,7 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
 
   // 아침: 묵은 숙소에서 출발하는 날이면 출발 전에 조식을 넣고, 먹을 시간이 되는지 본다
   let breakfast: BreakfastPlan | undefined
-  if (startPlace?.kind === 'hotel' && !day.noBreakfast) {
+  if (startPlace?.kind === 'hotel' && !day.noBreakfast && !stops.some((x) => x.meal === 'breakfast')) {
     const from = parseHM(startPlace.breakfastFrom)
     const until = parseHM(startPlace.breakfastUntil)
     const leaveBy = start - BREAKFAST_READY
@@ -356,6 +360,7 @@ export function computeDay(trip: Trip, routes: Record<string, RouteLeg>, index: 
     title: day.title?.trim() || autoTitle,
     autoTitle,
     breakfast,
+    morning: stops.find((x) => x.meal === 'breakfast'),
     lunch: stops.find((x) => x.meal === 'lunch'),
     dinner: stops.find((x) => x.meal === 'dinner'),
     index,

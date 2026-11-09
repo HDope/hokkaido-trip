@@ -1,5 +1,5 @@
 import type { Day, Place, Trip } from '../types'
-import { shortName, type DayPlan } from './schedule'
+import { shortName, type DayPlan, type Meal } from './schedule'
 import { josa, travelersOf } from './people'
 
 // 두 일정이 어떻게 다른지 사람이 읽을 수 있는 문장으로 만든다.
@@ -180,7 +180,7 @@ export function summarizePlans(plans: DayPlan[]): VersionSummary {
 
 // ---------- 버전 비교 ----------
 
-export type DigestPlace = { key: string; name: string; kind: Place['kind']; golf: boolean; days: number[]; nights: number; meals: ('lunch' | 'dinner')[] }
+export type DigestPlace = { key: string; name: string; kind: Place['kind']; golf: boolean; days: number[]; nights: number; meals: Meal[] }
 export type VersionDigest = { places: DigestPlace[] }
 
 const GOLF = /골프|golf|\bGC\b|\bCC\b/i
@@ -203,7 +203,7 @@ export function digestTrip(t: Trip): VersionDigest {
       if (!p) continue
       const d = at(p)
       if (!d.days.includes(i + 1)) d.days.push(i + 1)
-      if ((s.meal === 'lunch' || s.meal === 'dinner') && !d.meals.includes(s.meal)) d.meals.push(s.meal)
+      if (s.meal && s.meal !== 'none' && !d.meals.includes(s.meal)) d.meals.push(s.meal)
     }
     const stay = day.lodgingPlaceId ? t.places[day.lodgingPlaceId] : undefined
     if (stay) {

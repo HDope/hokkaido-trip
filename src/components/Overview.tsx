@@ -2,6 +2,8 @@ import { useStore } from '../store'
 import { tollText, type DayPlan } from '../lib/schedule'
 import { fmtDate, fmtDur, fmtHM, fmtKm } from '../lib/time'
 import { dayColor, LEVEL_META } from '../ui'
+import { downloadScheduleXlsx } from '../lib/export'
+import { Btn } from './common'
 import { TripGantt } from './Timeline'
 import { TripSummary } from './TripSummary'
 
@@ -25,7 +27,12 @@ export function Overview({ plans }: { plans: DayPlan[] }) {
 
   return (
     <div className="px-5 py-5">
-      <h2 className="text-xl font-bold">전체 일정</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xl font-bold">전체 일정</h2>
+        <Btn className="shrink-0 px-2.5 py-1 text-xs" onClick={() => downloadScheduleXlsx(trip, plans)}>
+          📊 엑셀로 받기
+        </Btn>
+      </div>
       <p className="mt-0.5 text-sm text-stone-500">
         {fmtDate(plans[0].date, true)} – {fmtDate(plans[plans.length - 1].date)} · {plans.length - 1}박 {plans.length}일
       </p>

@@ -15,6 +15,7 @@ import { fmtDate, fmtDur, fmtHM, fmtKm, isoDate } from '../lib/time'
 import { dayColor, KIND_ICON } from '../ui'
 import {
   addDay,
+  addBreakfast,
   addStop,
   deleteDay,
   moveDay,
@@ -48,6 +49,7 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
   const [proposal, setProposal] = useState<OptimizeResult>()
   const [insertAt, setInsertAt] = useState<number | null>(null)
   const [findLodging, setFindLodging] = useState(false)
+  const [quickAdd, setQuickAdd] = useState<'breakfast' | 'place'>()
   const routeUrls = plan.driveMin > 0 ? dayRouteUrls(dayPoints(plan)) : []
   const prevLodging = plan.index > 0 ? trip.days[plan.index - 1].lodgingPlaceId : undefined
   const isLastDay = plan.index === plans.length - 1
@@ -55,6 +57,7 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
   const isToday = isoDate(plan.date) === now.date
   // 일정이 바뀌면 전에 계산한 제안은 맞지 않으니 치운다
   useEffect(() => setProposal(undefined), [day.stops])
+  const morningPlace = plan.morning?.place ?? plan.breakfast?.place
   const insertBox = (index: number) => (
     <div className="my-2 rounded-xl border border-violet-300 bg-violet-50/60 p-2.5">
       <PlaceSearch
@@ -73,6 +76,43 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
       <button className="mt-1.5 text-xs text-stone-500 hover:underline" onClick={() => setInsertAt(null)}>
         취소
       </button>
+    </div>
+  )
+
+  const breakfastBox = (
+    <div className="mt-2 rounded-xl border border-violet-300 bg-violet-50/60 p-2.5">
+      <PlaceSearch
+        autoFocus
+        placeholder="아침 먹을 곳 이름 검색 또는 구글맵 링크 붙여넣기"
+        onPick={(p, existing) => {
+          const start = addBreakfast(day.id, existing ? p.id : upsertPlace(p))
+          setQuickAdd(undefined)
+          if (start) notify(`${josa(shortName(p.name), '을', '를')} 아침으로 넣었어요. 출발은 ${start} (↶ 되돌리기)`)
+        }}
+      />
+      <button className="mt-1.5 text-xs text-stone-500 hover:underline" onClick={() => setQuickAdd(undefined)}>
+        취소
+      </button>
+    </div>
+  )
+  const addPanel = (top: boolean) => (
+    <div className={cx('rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-3', top ? 'mt-2' : 'mt-5')}>
+      <div className="mb-2 text-xs font-semibold text-violet-800">＋ 장소 추가 — 그날 동선에서 가장 맞는 자리에 들어가요. 주차장에 세우고 걷는 구간 근처면 그 안에 걸어서 들어가요. 마음에 안 들면 ▲▼를 누르거나 카드를 끌어서 옮기고, 왼쪽(위쪽) 날짜로 끌어다 놓으면 그날로 옮겨져요</div>
+      <PlaceSearch
+        autoFocus={top}
+        onPick={(p, existing) => {
+          const id = existing ? p.id : upsertPlace(p)
+          const where = addStop(day.id, id)
+          if (where) notify(`${p.name}: ${where}`)
+          if (top) setQuickAdd(undefined)
+        }}
+      />
+      <WishlistQuickAdd dayId={day.id} />
+      {top && (
+        <button className="mt-1.5 text-xs text-stone-500 hover:underline" onClick={() => setQuickAdd(undefined)}>
+          취소
+        </button>
+      )}
     </div>
   )
 
@@ -151,11 +191,11 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
           {plan.pendingLegs > 0 && <span className="text-violet-600">경로 계산 중 {plan.pendingLegs}구간…</span>}
         </div>
         <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-stone-600">
-          {plan.breakfast && (
+          {morningPlace && (
             <span>
               {BREAKFAST_LABEL}{' '}
-              <button className="font-semibold text-stone-900 hover:text-violet-700" onClick={() => openPlace(plan.breakfast!.place.id)}>
-                {shortName(plan.breakfast.place.name)}
+              <button className="font-semibold text-stone-900 hover:text-violet-700" onClick={() => openPlace(morningPlace.id)}>
+                {shortName(morningPlace.name)}
               </button>
             </span>
           )}
@@ -249,23 +289,51 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
           <TimeInput value={day.startTime} onChange={(v) => updateDay(day.id, { startTime: v })} />
         </div>
         {plan.breakfast ? (
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg bg-amber-50 px-3 py-1.5 text-[12.5px] text-stone-700">
-            <span className="font-semibold">{BREAKFAST_LABEL}</span>
-            <span className="font-semibold tabular-nums">
-              {fmtHM(plan.breakfast.start)}~{fmtHM(plan.breakfast.end)}
-            </span>
-            <span className="min-w-0 flex-1 text-stone-600">{plan.breakfast.place.breakfastNote ?? (plan.breakfast.known ? '숙소 조식' : '숙소 상세에 조식 시간을 넣으면 먹을 수 있는지 점검해요')}</span>
-            <button className="shrink-0 text-xs text-stone-500 hover:underline" onClick={() => updateDay(day.id, { noBreakfast: true })}>
-              안 먹음
-            </button>
+          <div className="mt-2 flex gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2.5">
+            <div className="w-12 shrink-0 pt-0.5 text-right tabular-nums">
+              <div className="text-[15px] leading-tight font-bold">{fmtHM(plan.breakfast.start)}</div>
+              <div className="text-xs text-stone-400">{fmtHM(plan.breakfast.end)}</div>
+            </div>
+            <div className="min-w-0 flex-1">
+              <button className="block w-full min-w-0 text-left" onClick={() => openPlace(plan.breakfast!.place.id)}>
+                <div className="text-xs font-bold text-violet-700">{BREAKFAST_LABEL}</div>
+                <div className="truncate text-[15px] font-semibold hover:text-violet-700">
+                  {KIND_ICON.hotel} {plan.breakfast.place.name}
+                </div>
+                <div className="text-xs text-stone-500">{plan.breakfast.place.breakfastNote ?? (plan.breakfast.known ? '숙소 조식' : '숙소 상세에 조식 시간을 넣으면 먹을 수 있는지 점검해요')}</div>
+              </button>
+              <div className="mt-1.5 flex gap-3 text-xs">
+                <button className="font-semibold text-violet-700 hover:underline" onClick={() => setQuickAdd(quickAdd === 'breakfast' ? undefined : 'breakfast')}>
+                  다른 곳에서 먹기
+                </button>
+                <button className="text-stone-500 hover:underline" onClick={() => updateDay(day.id, { noBreakfast: true })}>
+                  안 먹음
+                </button>
+              </div>
+            </div>
           </div>
         ) : (
-          day.noBreakfast &&
+          !plan.morning &&
           plan.startPlace?.kind === 'hotel' && (
-            <button className="mt-1.5 text-xs text-stone-500 hover:underline" onClick={() => updateDay(day.id, { noBreakfast: undefined })}>
-              {BREAKFAST_LABEL} 다시 넣기
-            </button>
+            <div className="mt-1.5 flex gap-3 text-xs">
+              <button className="font-semibold text-violet-700 hover:underline" onClick={() => setQuickAdd(quickAdd === 'breakfast' ? undefined : 'breakfast')}>
+                ＋ 아침 먹을 곳 넣기
+              </button>
+              {day.noBreakfast && (
+                <button className="text-stone-500 hover:underline" onClick={() => updateDay(day.id, { noBreakfast: undefined })}>
+                  숙소 조식으로 되돌리기
+                </button>
+              )}
+            </div>
           )
+        )}
+        {quickAdd === 'breakfast' && breakfastBox}
+        {quickAdd === 'place' ? (
+          addPanel(true)
+        ) : (
+          <button className="mt-2 w-full rounded-xl border border-dashed border-violet-300 py-2 text-[13px] font-semibold text-violet-700 hover:bg-violet-50" onClick={() => setQuickAdd('place')}>
+            ＋ 장소 추가 (이름 검색, 구글맵 링크 붙여넣기)
+          </button>
         )}
 
         <SortableContext items={day.stops.map((s) => s.id)} strategy={verticalListSortingStrategy}>
@@ -338,17 +406,7 @@ export function DayView({ plan, plans }: { plan: DayPlan; plans: DayPlan[] }) {
         )}
         {findLodging && <LodgingFinder plan={plan} plans={plans} onClose={() => setFindLodging(false)} />}
 
-        <div className="mt-5 rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-3">
-          <div className="mb-2 text-xs font-semibold text-violet-800">＋ 장소 추가 — 그날 동선에서 가장 맞는 자리에 들어가요. 주차장에 세우고 걷는 구간 근처면 그 안에 걸어서 들어가요. 마음에 안 들면 ▲▼를 누르거나 카드를 끌어서 옮기고, 왼쪽(위쪽) 날짜로 끌어다 놓으면 그날로 옮겨져요</div>
-          <PlaceSearch
-            onPick={(p, existing) => {
-              const id = existing ? p.id : upsertPlace(p)
-              const where = addStop(day.id, id)
-              if (where) notify(`${p.name}: ${where}`)
-            }}
-          />
-          <WishlistQuickAdd dayId={day.id} />
-        </div>
+        {addPanel(false)}
 
         <textarea
           className="mt-4 field-sizing-content w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm placeholder:text-stone-400"
@@ -721,6 +779,7 @@ function StopCard({ sp, plan, plans, index, color, onInsert }: { sp: StopPlan; p
               <Menu label={<span className="text-xs text-stone-500">{sp.meal ? MEAL_LABEL[sp.meal] : '🍴 식사 표시'}</span>}>
                 {(close) =>
                   ([
+                    ['breakfast', MEAL_LABEL.breakfast],
                     ['lunch', MEAL_LABEL.lunch],
                     ['dinner', MEAL_LABEL.dinner],
                     ['none', '식사 아님'],

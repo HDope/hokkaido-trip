@@ -142,6 +142,7 @@ export function dayCost(plan: DayPlan): number {
 
   // 식사는 식사 시간에
   for (const s of plan.stops) {
+    if (s.meal === 'breakfast') cost += Math.max(0, s.arrive - 10 * 60) + (s === plan.stops[0] ? 0 : 300)
     if (s.meal === 'lunch') cost += Math.max(0, 11 * 60 - s.arrive, s.arrive - 14 * 60)
     if (s.meal === 'dinner') cost += Math.max(0, 17 * 60 - s.arrive, s.arrive - 20 * 60)
   }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getRevisions, liveTrip, openPreview, useStore } from '../store'
 import type { VersionMeta } from '../lib/backend'
 import { dayRange, digestTrip, summarizePlans, tripFingerprint, type DigestPlace, type VersionDigest, type VersionSummary } from '../lib/revisions'
-import type { DayPlan } from '../lib/schedule'
+import { MEAL_WORD, type DayPlan } from '../lib/schedule'
 import { fmtDur } from '../lib/time'
 import { KIND_ICON } from '../ui'
 import { cx } from './common'
@@ -264,7 +264,7 @@ function SectionRows({ title, items, first, span, onOpen }: { title: string; ite
                 <span>
                   <span className="font-semibold text-stone-800">{dayRange(c.days)}</span>
                   {c.nights > 0 && <span className="text-stone-500"> · {c.nights}박</span>}
-                  {c.meals.length > 0 && <span className="text-stone-500"> · {c.meals.map((m) => (m === 'lunch' ? '점심' : '저녁')).join('·')}</span>}
+                  {c.meals.length > 0 && <span className="text-stone-500"> · {c.meals.map((m) => MEAL_WORD[m]).join('·')}</span>}
                 </span>
               ) : (
                 <span className="text-stone-300">–</span>

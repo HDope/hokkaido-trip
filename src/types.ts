@@ -92,7 +92,7 @@ export type Stop = {
   booking?: Booking
 }
 
-export type MealMark = 'lunch' | 'dinner' | 'none'
+export type MealMark = 'breakfast' | 'lunch' | 'dinner' | 'none'
 
 /** 예약 정보. 날짜는 방문일 기준 며칠 전으로 적어 두어 일정을 옮겨도 따라간다 */
 export type Booking = {

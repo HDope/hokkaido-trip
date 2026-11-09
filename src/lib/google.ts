@@ -133,8 +133,8 @@ export async function placeDetails(key: string, placeId: string, sessionToken?: 
   return gfetch<GPlace>(`${PLACES}/places/${encodeURIComponent(placeId)}?${qs}`, key, { method: 'GET' }, DETAIL_FIELDS)
 }
 
-export async function searchText(key: string, textQuery: string, near?: LatLng): Promise<{ id: string; name: string; location: LatLng }[]> {
-  type R = { places?: { id: string; displayName?: { text: string }; location?: { latitude: number; longitude: number } }[] }
+export async function searchText(key: string, textQuery: string, near?: LatLng): Promise<{ id: string; name: string; address?: string; location: LatLng }[]> {
+  type R = { places?: { id: string; displayName?: { text: string }; formattedAddress?: string; location?: { latitude: number; longitude: number } }[] }
   const r = await gfetch<R>(
     `${PLACES}/places:searchText`,
     key,
@@ -150,11 +150,12 @@ export async function searchText(key: string, textQuery: string, near?: LatLng):
           : rect,
       }),
     },
-    'places.id,places.displayName,places.location',
+    'places.id,places.displayName,places.formattedAddress,places.location',
   )
   return (r.places ?? []).map((p) => ({
     id: p.id,
     name: p.displayName?.text ?? '',
+    address: p.formattedAddress,
     location: { lat: p.location?.latitude ?? 0, lng: p.location?.longitude ?? 0 },
   }))
 }

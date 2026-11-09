@@ -1,10 +1,10 @@
 import { hasGoogle, useStore } from './store'
 import type { Day, Place, PlaceKind, Stop, StopAlt } from './types'
-import { shortName, type Fix } from './lib/schedule'
+import { BREAKFAST_MIN, shortName, type Fix } from './lib/schedule'
 import { bestPlacement, betterDay, placeAt, removeWithRepair, reorderWithLegs, swapInAlt, type Placement } from './lib/placement'
 import { candidateToPlace, findCandidatePlace, type Candidate } from './candidates'
 import { haversineMeters } from './lib/geo'
-import { fmtDur, uid } from './lib/time'
+import { fmtDur, fmtHM, parseHM, uid } from './lib/time'
 import { josa } from './lib/people'
 
 const DEFAULT_STAY: Record<PlaceKind, number> = {
@@ -76,6 +76,27 @@ export function addStop(dayId: string, placeId: string, index?: number): string 
     t.wishlist = t.wishlist.filter((w) => w !== placeId)
   })
   return placement && placementText(placement, stop.stay, betterDay(trip, routes, dayIndex, stop, placement, google))
+}
+
+/** 숙소에서 식당까지 오가느라 더 드는 시간(분) */
+const BREAKFAST_TRIP = 15
+
+/** 아침 먹을 곳을 그날 맨 앞 카드로 넣는다. 밖에서 먹는 만큼 출발을 앞당겨 뒤 일정을 지키고, 바뀐 출발 시각을 돌려준다 */
+export function addBreakfast(dayId: string, placeId: string): string | undefined {
+  const st = useStore.getState()
+  const { trip, routes, mutate } = st
+  const dayIndex = trip ? trip.days.findIndex((d) => d.id === dayId) : -1
+  if (!trip || !trip.places[placeId] || dayIndex < 0) return
+  const stop: Stop = { id: uid(), placeId, stay: BREAKFAST_MIN, meal: 'breakfast' }
+  const stops = placeAt(trip, routes, dayIndex, stop, 0, hasGoogle(st))
+  const start = parseHM(trip.days[dayIndex].startTime) ?? 9 * 60
+  const startTime = fmtHM(Math.floor((start - BREAKFAST_MIN - BREAKFAST_TRIP) / 5) * 5)
+  mutate((t) => {
+    t.days[dayIndex].stops = stops
+    t.days[dayIndex].startTime = startTime
+    t.wishlist = t.wishlist.filter((w) => w !== placeId)
+  })
+  return startTime
 }
 
 export function updateStop(dayId: string, stopId: string, patch: Partial<Stop>) {

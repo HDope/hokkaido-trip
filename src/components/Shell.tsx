@@ -222,12 +222,12 @@ export function DayChips({ plans }: { plans: DayPlan[] }) {
       <button className={chip(view === 'compare')} onClick={() => setView('compare')}>
         🔀 비교
       </button>
-      {plans.map((p) => (
-        <DayChip key={p.day.id} p={p} active={view === 'day' && selectedDayId === p.day.id} onClick={() => selectDay(p.day.id)} />
-      ))}
       <button className={chip(view === 'places')} onClick={() => setView('places')}>
         ⭐ 장소함
       </button>
+      {plans.map((p) => (
+        <DayChip key={p.day.id} p={p} active={view === 'day' && selectedDayId === p.day.id} onClick={() => selectDay(p.day.id)} />
+      ))}
       <button className={chip(view === 'checklist')} onClick={() => setView('checklist')}>
         ✅ 준비
       </button>
