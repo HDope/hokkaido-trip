@@ -15,6 +15,9 @@ export type PlaceKind = 'sight' | 'food' | 'cafe' | 'shop' | 'onsen' | 'hotel' |
 
 export type BusinessStatus = 'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY'
 
+// 금액이나 주차 정보의 출처: official 공식 / web 여행 사이트·안내 글 / google 구글 표시 / estimate 어림 / manual 직접 입력
+export type CostSource = 'official' | 'web' | 'google' | 'estimate' | 'manual'
+
 // 주차: free 무료 전용 주차장 / paid 유료 전용 주차장 / nearby 전용은 없고 근처 유료 / none 차를 댈 곳이 없음
 export type ParkingStatus = 'free' | 'paid' | 'nearby' | 'none'
 
@@ -23,9 +26,13 @@ export type Parking = {
   fee?: string // 대략 요금. 없으면 요금을 확인하지 못한 것
   note?: string
   // 어디서 나온 정보인지: official 공식 / web 여행 사이트·안내 글 / google 구글 표시(요금 없음) / estimate 주변 시세로 추정 / manual 직접 입력
-  source: 'official' | 'web' | 'google' | 'estimate' | 'manual'
+  source: CostSource
   url?: string
+  yen?: number // 예산에 넣는 금액. 한 번 세울 때 대략, 숙소는 1박
 }
+
+/** 예상 비용. 식당·입장료·골프는 1인, 숙소는 1박 객실 전체 */
+export type PlaceCost = { yen: number; note?: string; source: CostSource }
 
 export type Place = {
   id: string
@@ -62,6 +69,8 @@ export type Place = {
   breakfastFrom?: string // 조식 시작 "07:00"
   breakfastUntil?: string // 마지막 입장 "09:30"
   breakfastNote?: string // 식당 이름, 요금 등
+  breakfastYen?: number // 조식 1인 금액 (숙박 요금에 포함이면 0)
+  cost?: PlaceCost
 }
 
 export type LegMode = 'DRIVE' | 'WALK' | 'TRANSIT' | 'MANUAL'
@@ -139,6 +148,18 @@ export type RouteLeg = {
   error?: string
 }
 
+export type BudgetExtra = { id: string; label: string; yen: number; note?: string }
+
+/** 장소에 묶이지 않는 예산 항목과 계산 기준 */
+export type Budget = {
+  rentalYen?: number
+  rentalNote?: string
+  kmPerLiter?: number
+  yenPerLiter?: number
+  krwPerYen?: number // 1엔이 몇 원인지
+  extras?: BudgetExtra[]
+}
+
 export type Trip = {
   version: 1
   title: string
@@ -148,6 +169,7 @@ export type Trip = {
   wishlist: string[]
   checklist: { id: string; text: string; done: boolean }[]
   settings: Settings
+  budget?: Budget
   routeCache: Record<string, RouteLeg>
   updatedAt: string
 }

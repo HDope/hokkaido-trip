@@ -47,6 +47,7 @@ type State = {
   future: Trip[]
   showSettings: boolean
   showExport: boolean
+  showBudget: boolean
   toast?: { text: string; id: number }
   candThemes: ThemeId[] // 비어 있으면 전체
   candRegion?: RegionId
@@ -68,6 +69,7 @@ type State = {
   setGoogleStatus: (s: State['googleStatus'], msg?: string, reason?: string) => void
   setShowSettings: (v: boolean) => void
   setShowExport: (v: boolean) => void
+  setShowBudget: (v: boolean) => void
   setShowVersions: (v: boolean) => void
   notify: (text: string) => void
   replaceTrip: (t: Trip) => void
@@ -99,6 +101,7 @@ export const useStore = create<State>((set, get) => ({
   future: [],
   showSettings: false,
   showExport: false,
+  showBudget: false,
   showVersions: false,
   candThemes: [],
   offerHomeScreen: false,
@@ -233,6 +236,7 @@ export const useStore = create<State>((set, get) => ({
   setGoogleStatus: (googleStatus, googleMessage, googleReason) => set({ googleStatus, googleMessage, googleReason }),
   setShowSettings: (showSettings) => set({ showSettings }),
   setShowExport: (showExport) => set({ showExport }),
+  setShowBudget: (showBudget) => set({ showBudget }),
   setShowVersions: (showVersions) => set({ showVersions }),
   // 보기 전용일 때는 수정이 막히므로 "바꿨어요" 같은 안내도 내보내지 않는다
   notify: (text) => {

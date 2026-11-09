@@ -1,5 +1,5 @@
 import { hasGoogle, useStore } from './store'
-import type { Day, Place, PlaceKind, Stop, StopAlt } from './types'
+import type { Budget, BudgetExtra, Day, Place, PlaceKind, Stop, StopAlt } from './types'
 import { BREAKFAST_MIN, shortName, type Fix } from './lib/schedule'
 import { bestPlacement, betterDay, placeAt, removeWithRepair, reorderWithLegs, swapInAlt, type Placement } from './lib/placement'
 import { candidateToPlace, findCandidatePlace, type Candidate } from './candidates'
@@ -19,7 +19,7 @@ const DEFAULT_STAY: Record<PlaceKind, number> = {
 }
 
 /** 글자나 숫자를 치는 칸. 이어서 고치면 되돌리기 한 번으로 묶는다 */
-const TYPED_FIELDS = new Set(['note', 'name', 'nameLocal', 'phone', 'mapcode', 'checkNote', 'breakfastNote', 'manualMinutes', 'endManualMinutes', 'defaultStay', 'parking', 'booking'])
+const TYPED_FIELDS = new Set(['note', 'name', 'nameLocal', 'phone', 'mapcode', 'checkNote', 'breakfastNote', 'manualMinutes', 'endManualMinutes', 'defaultStay', 'parking', 'booking', 'cost', 'breakfastYen', 'rentalYen', 'kmPerLiter', 'yenPerLiter', 'krwPerYen', 'label', 'yen'])
 
 const typedKey = (scope: string, patch: object) => {
   const keys = Object.keys(patch)
@@ -241,6 +241,32 @@ export function updatePlace(placeId: string, patch: Partial<Place>) {
     Object.assign(p, patch)
     for (const k of Object.keys(patch) as (keyof Place)[]) if (patch[k] === undefined) delete p[k]
   }, typedKey(`place:${placeId}`, patch))
+}
+
+export function updateBudget(patch: Partial<Budget>) {
+  useStore.getState().mutate((t) => {
+    t.budget = { ...t.budget, ...patch }
+    for (const k of Object.keys(patch) as (keyof Budget)[]) if (patch[k] === undefined) delete t.budget[k]
+  }, typedKey('budget', patch))
+}
+
+export function addBudgetExtra(label: string, yen: number) {
+  useStore.getState().mutate((t) => {
+    t.budget = { ...t.budget, extras: [...(t.budget?.extras ?? []), { id: uid(), label, yen }] }
+  })
+}
+
+export function updateBudgetExtra(id: string, patch: Partial<BudgetExtra>) {
+  useStore.getState().mutate((t) => {
+    const x = t.budget?.extras?.find((e) => e.id === id)
+    if (x) Object.assign(x, patch)
+  }, typedKey(`extra:${id}`, patch))
+}
+
+export function removeBudgetExtra(id: string) {
+  useStore.getState().mutate((t) => {
+    if (t.budget?.extras) t.budget.extras = t.budget.extras.filter((e) => e.id !== id)
+  })
 }
 
 export function deletePlace(placeId: string) {

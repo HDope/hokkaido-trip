@@ -15,6 +15,7 @@ import { MapPanel } from './components/MapPanel'
 import { PlaceDrawer } from './components/PlaceDrawer'
 import { SettingsModal } from './components/SettingsModal'
 import { ExportModal } from './components/ExportModal'
+import { BudgetModal } from './components/BudgetModal'
 import { ReadOnlyBanner, VersionsModal } from './components/VersionsModal'
 import { Toast, cx } from './components/common'
 import { ConnectScreen } from './components/ConnectScreen'
@@ -178,6 +179,7 @@ function Planner() {
       <PlaceDrawer />
       <SettingsModal />
       <ExportModal />
+      <BudgetModal />
       <VersionsModal plans={plans} />
       <Toast />
       <HomeScreenHint />

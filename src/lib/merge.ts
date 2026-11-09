@@ -9,7 +9,7 @@ type Item = Obj & { id: string }
 type Ctx = { conflicts: number }
 
 /** 항목 id 로 맞춰 합치는 목록 */
-const ID_LISTS = new Set(['days', 'stops', 'alts', 'checklist'])
+const ID_LISTS = new Set(['days', 'stops', 'alts', 'checklist', 'extras'])
 /** id 를 모아 둔 목록. 양쪽의 추가와 삭제를 모두 반영한다 */
 const SET_LISTS = new Set(['picks', 'wishlist'])
 

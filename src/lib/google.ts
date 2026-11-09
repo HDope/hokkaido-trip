@@ -1,4 +1,4 @@
-import type { BusinessStatus, Hours, LatLng, LegMode, Parking, Place, PlaceKind } from '../types'
+import type { BusinessStatus, Hours, LatLng, LegMode, Parking, Place, PlaceCost, PlaceKind } from '../types'
 import { HOKKAIDO_BOUNDS } from './geo'
 
 // Google Maps Platform — Places API (New) + Routes API 를 REST 로 직접 호출 (둘 다 브라우저 CORS 허용)
@@ -20,6 +20,7 @@ export const DETAIL_FIELDS = [
   'primaryType',
   'types',
   'parkingOptions',
+  'priceRange',
 ].join(',')
 
 export class GoogleApiError extends Error {
@@ -125,6 +126,7 @@ export type GPlace = {
   websiteUri?: string
   primaryType?: string
   types?: string[]
+  priceRange?: { startPrice?: { units?: string }; endPrice?: { units?: string } }
 }
 
 export async function placeDetails(key: string, placeId: string, sessionToken?: string): Promise<GPlace> {
@@ -260,8 +262,19 @@ export function parkingFromGoogle(o?: GParking): Parking | undefined {
   return undefined
 }
 
+/** 식당의 구글 가격대 가운데 값을 1인 예상 금액으로 쓴다 */
+function costFromGoogle(g: GPlace, kind: PlaceKind): PlaceCost | undefined {
+  if (kind !== 'food' && kind !== 'cafe') return undefined
+  const low = Number(g.priceRange?.startPrice?.units)
+  const high = Number(g.priceRange?.endPrice?.units)
+  if (!(low > 0)) return undefined
+  const mid = high > 0 ? (low + high) / 2 : low
+  return { yen: Math.round(mid / 100) * 100, note: `구글 가격대 ¥${low.toLocaleString()}${high > 0 ? `~${high.toLocaleString()}` : ' 이상'}`, source: 'google' }
+}
+
 /** 구글 응답을 앱의 Place 필드로 변환 (기존 장소에 덮어쓸 부분만) */
 export function toPlaceFields(g: GPlace): Partial<Place> {
+  const kind = kindFromTypes([g.primaryType ?? '', ...(g.types ?? [])])
   const hours: Hours | undefined = g.regularOpeningHours?.periods
     ? {
         periods: g.regularOpeningHours.periods.map((p) => ({ open: p.open, close: p.close })),
@@ -279,10 +292,11 @@ export function toPlaceFields(g: GPlace): Partial<Place> {
     hours,
     phone: g.nationalPhoneNumber,
     parking: parkingFromGoogle(g.parkingOptions),
+    cost: costFromGoogle(g, kind),
     rating: g.rating,
     ratingCount: g.userRatingCount,
     website: g.websiteUri,
-    kind: kindFromTypes([g.primaryType ?? '', ...(g.types ?? [])]),
+    kind,
     verifiedAt: new Date().toISOString(),
   }
 }

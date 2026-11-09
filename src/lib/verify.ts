@@ -46,6 +46,8 @@ export async function verifyPlace(place: Place): Promise<{ ok: boolean; message:
     })
     // 구글은 주차장 유무만 준다. 직접 넣었거나 조사한 정보는 덮어쓰지 않는다
     if (fields.parking && (!p.parking || p.parking.source === 'google')) p.parking = fields.parking
+    // 가격대도 조사했거나 직접 넣은 금액은 덮어쓰지 않는다
+    if (fields.cost && (!p.cost || p.cost.source === 'google')) p.cost = fields.cost
     // 구글에 영업시간이 있으면 그걸 우선. 직접 입력한 시간은 덮어쓰지 않는다
     if (fields.hours && p.hours?.source !== 'manual') {
       p.hours = fields.hours

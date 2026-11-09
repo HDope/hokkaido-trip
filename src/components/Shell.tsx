@@ -7,6 +7,7 @@ import { dayColor, LEVEL_META } from '../ui'
 import { addDay } from '../actions'
 import { cx, InlineText } from './common'
 import { MiniDayBar } from './Timeline'
+import { BudgetChip } from './BudgetModal'
 
 export function TopBar() {
   const trip = useStore((s) => s.trip)!
@@ -55,6 +56,7 @@ export function TopBar() {
       </div>
       {kind === 'server' && <span className="hidden rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-900 sm:inline" title="이 화면의 수정은 웹 버전에 반영되지 않아요">맥 전용 사본</span>}
       <span className={cx('hidden text-xs sm:inline', save[1])}>{save[0]}</span>
+      <BudgetChip className="hidden shrink-0 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-bold whitespace-nowrap text-amber-900 tabular-nums hover:bg-amber-100 sm:block" />
       <div className="flex">
         <button className="rounded-lg px-2 py-1 text-stone-600 hover:bg-stone-100 disabled:opacity-30" disabled={!canUndo} onClick={undo} title="되돌리기 (⌘/Ctrl+Z)">
           ↶
@@ -208,6 +210,7 @@ export function DayChips({ plans }: { plans: DayPlan[] }) {
   const today = plans.find((p) => isoDate(p.date) === now.date)
   return (
     <div className="flex gap-1.5 overflow-x-auto border-b border-stone-200 px-3 py-2 xl:hidden">
+      <BudgetChip compact className="shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-bold whitespace-nowrap text-amber-900 tabular-nums sm:hidden" />
       {today && (
         <button className={chip(view === 'day' && selectedDayId === today.day.id)} onClick={() => selectDay(today.day.id)}>
           📍 오늘
