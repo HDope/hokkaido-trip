@@ -57,7 +57,7 @@ const round100 = (n: number) => Math.round(n / 100) * 100
 
 /** 돈이 드는 장소를 어느 항목으로 볼지. 쇼핑은 금액을 적어 둔 곳만 넣는다 */
 function placeCat(p: Place): BudgetCat | undefined {
-  if (p.kind === 'hotel' || p.kind === 'airport') return undefined
+  if (p.kind === 'hotel' || p.kind === 'airport' || /주차|駐車/.test(p.name)) return undefined
   if (p.kind === 'food' || p.kind === 'cafe') return 'food'
   if (GOLF.test(p.name)) return 'golf'
   if (p.kind === 'sight' || p.kind === 'onsen') return 'entry'

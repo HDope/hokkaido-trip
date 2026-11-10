@@ -1,6 +1,8 @@
 import { useStore } from '../store'
 import type { Place } from '../types'
 import { haversineMeters } from './geo'
+
+const PARKING_NAME = /주차|駐車/
 import { placeDetails, searchText, toPlaceFields } from './google'
 
 /** 장소 하나를 구글 데이터로 최신화 (place_id 가 없으면 이름+좌표로 찾아 연결) */
@@ -55,7 +57,8 @@ export async function verifyPlace(place: Place): Promise<{ ok: boolean; message:
     }
     // 큐레이션 좌표가 어긋나 있으면 구글 좌표로 보정 (300m 이상 차이)
     if (fields.location && moved > 300) p.location = fields.location
-    if (!p.kind || p.kind === 'other') p.kind = fields.kind ?? p.kind
+    // 주차장은 구글에서 명소로 나와도 '기타'로 둔다 (일정·예산에서 주차장으로 다룬다)
+    if ((!p.kind || p.kind === 'other') && !PARKING_NAME.test(p.name)) p.kind = fields.kind ?? p.kind
   })
   return { ok: true, message: place.name }
 }
